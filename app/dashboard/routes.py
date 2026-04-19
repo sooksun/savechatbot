@@ -4,8 +4,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Form, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..models import Category, DashboardUser, Group, Link, Message, Summary, User
-from ..services.minio_client import get_presigned_url
+from ..services.minio_client import get_object_stream, stat_object
 from ..services.summarizer import generate_summary
 from .auth import (
     get_current_user,
@@ -40,10 +40,7 @@ def _to_bkk(dt: datetime | None) -> str:
 def _media_url(path: str | None) -> str:
     if not path:
         return ""
-    try:
-        return get_presigned_url(path, expires_seconds=3600)
-    except Exception:
-        return ""
+    return f"/file/{path}"
 
 
 templates.env.filters["to_bkk"] = _to_bkk
@@ -79,6 +76,35 @@ def login(
     resp = RedirectResponse(next or "/", status_code=303)
     resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=60 * 60 * 8)
     return resp
+
+
+@router.get("/file/{path:path}")
+def get_file(
+    path: str,
+    user: DashboardUser = Depends(get_current_user),
+):
+    try:
+        info = stat_object(path)
+        resp = get_object_stream(path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    def _iter():
+        try:
+            for chunk in resp.stream(32 * 1024):
+                yield chunk
+        finally:
+            resp.close()
+            resp.release_conn()
+
+    headers = {}
+    filename = path.rsplit("/", 1)[-1]
+    headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    return StreamingResponse(
+        _iter(),
+        media_type=info.content_type or "application/octet-stream",
+        headers=headers,
+    )
 
 
 @router.get("/logout")

@@ -57,3 +57,16 @@ def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
         object_name,
         expires=timedelta(seconds=expires_seconds),
     )
+
+
+def get_object_stream(object_name: str):
+    """Return MinIO response object (caller must close). Use for streaming."""
+    s = get_settings()
+    client = get_minio()
+    return client.get_object(s.MINIO_BUCKET, object_name)
+
+
+def stat_object(object_name: str):
+    s = get_settings()
+    client = get_minio()
+    return client.stat_object(s.MINIO_BUCKET, object_name)
