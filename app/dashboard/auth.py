@@ -16,12 +16,17 @@ _signer = URLSafeTimedSerializer(settings.DASHBOARD_SECRET_KEY, salt="session")
 SESSION_MAX_AGE = 60 * 60 * 8  # 8 hours
 
 
+def _truncate(pw: str) -> str:
+    # bcrypt has a hard 72-byte input limit
+    return pw.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
+
 def hash_password(pw: str) -> str:
-    return pwd_ctx.hash(pw)
+    return pwd_ctx.hash(_truncate(pw))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return pwd_ctx.verify(_truncate(plain), hashed)
 
 
 def make_session_token(user_id: int) -> str:
