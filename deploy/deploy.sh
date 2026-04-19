@@ -24,4 +24,4 @@ docker compose -f docker-compose.prod.yml ps
 
 echo
 echo "Logs:    docker compose -f docker-compose.prod.yml logs -f app"
-echo "Health:  curl http://127.0.0.1:8000/health"
+echo "Health:  curl http://127.0.0.1:9920/health"
