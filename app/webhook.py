@@ -16,27 +16,13 @@ from .models import Category, Group, Link, Message, User
 from .services.commands import handle as handle_command, is_command
 from .services.enrichment import enrich_message
 from .services.gemini_client import classify_message
-from .services.line_client import get_group_summary, get_profile, reply_message
+from .services.line_client import get_group_summary, get_profile
 from .services.link_extractor import extract as extract_links
 from .services.media_storage import download_line_content
 
 log = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter()
-
-WELCOME_TEXT = (
-    "👋 สวัสดีครับ! บอทบันทึกบทสนทนาเริ่มทำงานแล้ว\n\n"
-    "📌 ฉันจะบันทึก:\n"
-    "• ข้อความ ทุกข้อความในกลุ่ม\n"
-    "• 🖼 รูปภาพ (พร้อม OCR ดึงข้อความ)\n"
-    "• 📎 ไฟล์ PDF, Word, Excel ฯลฯ\n"
-    "• 🔗 ลิงก์ YouTube / Google Drive / Canva\n\n"
-    "📊 คำสั่งที่ใช้ได้:\n"
-    "!สรุปวันนี้ — สรุปบทสนทนาวันนี้\n"
-    "!สรุปเมื่อวาน — สรุปของเมื่อวาน\n"
-    "!สรุปสัปดาห์ — สรุปรายสัปดาห์\n"
-    "!help — แสดงคำสั่งทั้งหมด"
-)
 
 
 def _verify(body: bytes, signature: str | None) -> bool:
@@ -105,14 +91,12 @@ def _resolve_category(db: Session, text: str | None) -> int | None:
     return new_cat.id
 
 
-async def _handle_join(db: Session, event: dict, background: BackgroundTasks) -> None:
-    """Bot joined a group — save group to DB and send welcome message."""
+async def _handle_join(db: Session, event: dict) -> None:
+    """Bot joined a group — silently save group to DB only."""
     src = event.get("source", {})
     line_group_id = src.get("groupId")
     if not line_group_id:
         return
-
-    # Upsert group
     g = db.query(Group).filter_by(line_group_id=line_group_id).first()
     if not g:
         info = await get_group_summary(line_group_id)
@@ -120,12 +104,6 @@ async def _handle_join(db: Session, event: dict, background: BackgroundTasks) ->
         db.add(g)
         db.commit()
         log.info("Joined new group: %s (%s)", g.name, line_group_id)
-    else:
-        log.info("Re-joined existing group: %s (%s)", g.name, line_group_id)
-
-    reply_token = event.get("replyToken")
-    if reply_token:
-        background.add_task(reply_message, reply_token, WELCOME_TEXT)
 
 
 async def _handle_message(db: Session, event: dict, background: BackgroundTasks) -> None:
@@ -188,7 +166,7 @@ async def _handle_message(db: Session, event: dict, background: BackgroundTasks)
 async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -> None:
     etype = event.get("type")
     if etype == "join":
-        await _handle_join(db, event, background)
+        await _handle_join(db, event)
     elif etype == "message":
         await _handle_message(db, event, background)
 
