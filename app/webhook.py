@@ -16,13 +16,27 @@ from .models import Category, Group, Link, Message, User
 from .services.commands import handle as handle_command, is_command
 from .services.enrichment import enrich_message
 from .services.gemini_client import classify_message
-from .services.line_client import get_group_summary, get_profile
+from .services.line_client import get_group_summary, get_profile, reply_message
 from .services.link_extractor import extract as extract_links
 from .services.media_storage import download_line_content
 
 log = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter()
+
+WELCOME_TEXT = (
+    "👋 สวัสดีครับ! บอทบันทึกบทสนทนาเริ่มทำงานแล้ว\n\n"
+    "📌 ฉันจะบันทึก:\n"
+    "• ข้อความ ทุกข้อความในกลุ่ม\n"
+    "• 🖼 รูปภาพ (พร้อม OCR ดึงข้อความ)\n"
+    "• 📎 ไฟล์ PDF, Word, Excel ฯลฯ\n"
+    "• 🔗 ลิงก์ YouTube / Google Drive / Canva\n\n"
+    "📊 คำสั่งที่ใช้ได้:\n"
+    "!สรุปวันนี้ — สรุปบทสนทนาวันนี้\n"
+    "!สรุปเมื่อวาน — สรุปของเมื่อวาน\n"
+    "!สรุปสัปดาห์ — สรุปรายสัปดาห์\n"
+    "!help — แสดงคำสั่งทั้งหมด"
+)
 
 
 def _verify(body: bytes, signature: str | None) -> bool:
@@ -91,9 +105,30 @@ def _resolve_category(db: Session, text: str | None) -> int | None:
     return new_cat.id
 
 
-async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -> None:
-    if event.get("type") != "message":
+async def _handle_join(db: Session, event: dict, background: BackgroundTasks) -> None:
+    """Bot joined a group — save group to DB and send welcome message."""
+    src = event.get("source", {})
+    line_group_id = src.get("groupId")
+    if not line_group_id:
         return
+
+    # Upsert group
+    g = db.query(Group).filter_by(line_group_id=line_group_id).first()
+    if not g:
+        info = await get_group_summary(line_group_id)
+        g = Group(line_group_id=line_group_id, name=info.get("groupName"))
+        db.add(g)
+        db.commit()
+        log.info("Joined new group: %s (%s)", g.name, line_group_id)
+    else:
+        log.info("Re-joined existing group: %s (%s)", g.name, line_group_id)
+
+    reply_token = event.get("replyToken")
+    if reply_token:
+        background.add_task(reply_message, reply_token, WELCOME_TEXT)
+
+
+async def _handle_message(db: Session, event: dict, background: BackgroundTasks) -> None:
     msg = event.get("message", {})
     src = event.get("source", {})
     line_mid = msg.get("id")
@@ -145,10 +180,17 @@ async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -
         db.add(Link(message_id=m.id, url=ln.url, kind=ln.kind))
     db.commit()
 
-    # Offload slow work (OCR, link title fetch) so webhook returns fast.
     needs_enrich = m.msg_type == "image" or bool(m.links) or extract_links(text)
     if needs_enrich:
         background.add_task(enrich_message, m.id)
+
+
+async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -> None:
+    etype = event.get("type")
+    if etype == "join":
+        await _handle_join(db, event, background)
+    elif etype == "message":
+        await _handle_message(db, event, background)
 
 
 @router.post("/webhook")
