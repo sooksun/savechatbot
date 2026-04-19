@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <p class="muted"><a href="/standards">← กลับรายการมาตรฐาน</a></p>
+  <h2 style="margin:0">มาตรฐานที่ {{ std.code }} — {{ std.title }}</h2>
+  {% if std.description %}<p class="muted">{{ std.description }}</p>{% endif %}
+  <div class="flex" style="margin-top:10px">
+    <a href="/standards/{{ std.code }}/export.pdf" class="tag" style="color:#34d399;border-color:#34d399">📄 ดาวน์โหลด PDF section</a>
+    <span class="tag">หลักฐาน {{ rows|length }} ชิ้น</span>
+  </div>
+</div>
+
+<div class="card">
+  <h3>ผูกข้อความเพิ่ม (manual)</h3>
+  <form method="post" action="/standards/{{ std.code }}/attach" class="flex">
+    <input type="number" name="message_id" placeholder="Message ID" required style="width:140px"/>
+    <input name="note" placeholder="หมายเหตุ (ไม่บังคับ)" style="flex:1; min-width:200px"/>
+    <button type="submit">ผูก</button>
+  </form>
+  <p class="muted" style="margin-top:8px">ดู Message ID จากหน้า <a href="/messages">ข้อความ</a> — หรือใช้คำสั่ง <code>!แท็ก {{ std.code }}</code> ในกลุ่ม LINE</p>
+</div>
+
+<div class="card">
+  <h3>หลักฐานที่ผูกกับมาตรฐานนี้</h3>
+  {% if not rows %}
+    <p class="muted">ยังไม่มีหลักฐาน</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>วันที่</th><th>ประเภท</th><th>เนื้อหา / หลักฐาน</th><th>ที่มา</th><th>ความมั่นใจ</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for m, ms in rows %}
+      <tr>
+        <td class="muted" style="white-space:nowrap">{{ m.sent_at | to_bkk }}</td>
+        <td><span class="tag">{{ m.msg_type }}</span></td>
+        <td>
+          {% if m.msg_type == 'image' and m.media_path %}
+            <a href="{{ m.media_path | media_url }}" target="_blank"><img class="thumb" src="{{ m.media_path | media_url }}"/></a>
+            {% if m.ocr_text %}<div class="muted" style="font-size:12px">{{ m.ocr_text[:200] }}</div>{% endif %}
+          {% elif m.msg_type == 'file' %}
+            📎 {{ m.original_filename or m.media_path }}
+            {% if m.doc_text %}<div class="muted" style="font-size:12px">{{ m.doc_text[:200] }}...</div>{% endif %}
+          {% else %}
+            {{ m.text or '-' }}
+          {% endif %}
+          {% if ms.note %}<div style="margin-top:4px"><span class="tag" style="color:#fbbf24;border-color:#fbbf24">📝 {{ ms.note }}</span></div>{% endif %}
+        </td>
+        <td>
+          {% if ms.source == 'manual' %}<span class="tag" style="color:#fbbf24;border-color:#fbbf24">manual</span>
+          {% else %}<span class="tag">auto</span>{% endif %}
+        </td>
+        <td class="muted">{{ "%.0f%%"|format(ms.confidence * 100) }}</td>
+        <td>
+          {% if user.role == 'admin' %}
+          <form class="inline" method="post" action="/standards/{{ std.code }}/detach" onsubmit="return confirm('ถอดข้อความนี้?')">
+            <input type="hidden" name="message_id" value="{{ m.id }}"/>
+            <button type="submit" class="secondary">ถอด</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

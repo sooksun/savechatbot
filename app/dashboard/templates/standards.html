@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">🏫 SAR — มาตรฐานการศึกษา</h2>
+  <p class="muted">ระบบจัดหลักฐาน (ข้อความ/รูป/ไฟล์/ลิงก์) เข้ากับมาตรฐาน สพฐ. โดยอัตโนมัติ ครูสามารถผูกหลักฐานเองผ่านคำสั่ง LINE <code>!แท็ก &lt;รหัส&gt;</code> ได้</p>
+  {% if user.role == 'admin' %}
+  <a href="/sar/export.pdf" class="tag" style="color:#34d399;border-color:#34d399">📄 ดาวน์โหลดเล่ม SAR รวม (PDF)</a>
+  {% endif %}
+</div>
+
+{% if user.role == 'admin' %}
+<div class="card">
+  <h3>เพิ่มมาตรฐาน</h3>
+  <form method="post" action="/standards/add" class="flex">
+    <input name="code" placeholder="รหัส เช่น 1.1" required style="width:100px"/>
+    <input name="parent_code" placeholder="รหัสแม่ (ไม่บังคับ)" style="width:120px"/>
+    <input name="title" placeholder="ชื่อมาตรฐาน" required style="flex:1; min-width:200px"/>
+    <input name="description" placeholder="คำอธิบาย" style="flex:1; min-width:200px"/>
+    <button type="submit">เพิ่ม</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>รหัส</th><th>ชื่อมาตรฐาน</th><th>คำอธิบาย</th><th style="text-align:right">หลักฐาน</th><th>สถานะ</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s, cnt in rows %}
+      <tr>
+        <td><strong>{{ s.code }}</strong></td>
+        <td><a href="/standards/{{ s.code }}">{{ s.title }}</a></td>
+        <td class="muted">{{ s.description or '-' }}</td>
+        <td style="text-align:right">{{ cnt }}</td>
+        <td>
+          {% if s.is_active %}<span class="tag" style="color:#34d399;border-color:#34d399">active</span>
+          {% else %}<span class="tag">inactive</span>{% endif %}
+        </td>
+        <td>
+          <a href="/standards/{{ s.code }}/export.pdf" class="tag">PDF</a>
+          {% if user.role == 'admin' %}
+          <form class="inline" method="post" action="/standards/toggle">
+            <input type="hidden" name="id" value="{{ s.id }}"/>
+            <button type="submit" class="secondary">{{ 'ปิด' if s.is_active else 'เปิด' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

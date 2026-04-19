@@ -5,9 +5,9 @@ import logging
 
 from ..config import get_settings
 from ..database import SessionLocal
-from ..models import Link, Message
+from ..models import Link, Message, MessageStandard, Standard
 from .doc_extractor import SUPPORTED_EXTS as DOC_EXTS, extract as extract_doc
-from .gemini_client import ocr_image
+from .gemini_client import classify_standards, ocr_image
 from .link_metadata import fetch_title
 from .minio_client import get_object_bytes
 
@@ -96,5 +96,44 @@ async def enrich_message(message_id: int) -> None:
             extract_knowledge(message_id)
         except Exception:
             log.exception("knowledge extraction failed for %s", message_id)
+
+        # 6. Classify against SAR standards (Phase 5)
+        try:
+            _classify_standards(db, m)
+        except Exception:
+            log.exception("standard classification failed for %s", message_id)
     finally:
         db.close()
+
+
+def _classify_standards(db, msg: Message) -> None:
+    """Auto-tag message with SAR standards based on text/ocr/doc content."""
+    content = " ".join(s for s in (msg.text, msg.ocr_text, msg.doc_text) if s)
+    if len(content.strip()) < 20:
+        return
+    # skip if already has auto tags (avoid re-running on re-enrichment)
+    has_auto = db.query(MessageStandard).filter_by(
+        message_id=msg.id, source="auto"
+    ).first()
+    if has_auto:
+        return
+    stds = db.query(Standard).filter_by(is_active=1).all()
+    catalog = [{"code": s.code, "title": s.title} for s in stds]
+    picks = classify_standards(content, catalog)
+    if not picks:
+        return
+    by_code = {s.code: s for s in stds}
+    for p in picks:
+        std = by_code.get(p["code"])
+        if not std:
+            continue
+        existing = db.query(MessageStandard).filter_by(
+            message_id=msg.id, standard_id=std.id
+        ).first()
+        if existing:
+            continue
+        db.add(MessageStandard(
+            message_id=msg.id, standard_id=std.id,
+            confidence=p["confidence"], source="auto",
+        ))
+    db.commit()

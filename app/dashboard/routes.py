@@ -14,11 +14,11 @@ from ..config import get_settings
 from ..database import get_db
 from ..models import (
     ActionItem, Category, DashboardUser, Decision, Entity, EntityMention,
-    Group, Link, Message, MessageTag, Summary, Tag, User,
+    Group, Link, Message, MessageStandard, MessageTag, Standard, Summary, Tag, User,
 )
 from ..services.embeddings import search as semantic_search
 from ..services.minio_client import get_object_stream, stat_object
-from ..services.pdf_export import summary_to_pdf
+from ..services.pdf_export import sar_book_to_pdf, summary_to_pdf
 from ..services.summarizer import generate_summary
 from .auth import (
     get_current_user,
@@ -548,6 +548,223 @@ def categories_delete(
         db.delete(c)
         db.commit()
     return RedirectResponse("/categories", status_code=303)
+
+
+# ─── SAR / Standards (Phase 5) ───────────────────────────────────────────────
+
+def _build_evidences(db: Session, std_id: int, limit: int = 500) -> list[dict]:
+    """Gather evidence entries linked to a standard, with embeddable image URIs."""
+    from ..services.pdf_export import _media_to_data_uri  # local import to avoid cycle
+    rows = (
+        db.query(Message, MessageStandard)
+        .join(MessageStandard, MessageStandard.message_id == Message.id)
+        .filter(MessageStandard.standard_id == std_id)
+        .order_by(Message.sent_at.desc())
+        .limit(limit)
+        .all()
+    )
+    out: list[dict] = []
+    for m, ms in rows:
+        item: dict = {
+            "caption": ms.note or (m.text or "")[:160] or "(ไม่มีคำอธิบาย)",
+            "sent_at": m.sent_at,
+            "source": ms.source,
+        }
+        if m.msg_type == "image" and m.media_path:
+            uri = _media_to_data_uri(m.media_path)
+            if uri:
+                item["thumb_uri"] = uri
+            else:
+                item["text"] = m.ocr_text or m.text or ""
+        elif m.msg_type in ("text", "sticker"):
+            item["text"] = m.text or ""
+        elif m.msg_type == "file":
+            item["text"] = f"[{m.original_filename or m.media_path or 'ไฟล์'}] {(m.doc_text or '')[:400]}"
+        else:
+            links = db.query(Link).filter(Link.message_id == m.id).all()
+            if links:
+                for ln in links:
+                    item_ = dict(item)
+                    item_["link_url"] = ln.url
+                    item_["link_title"] = ln.title or ""
+                    out.append(item_)
+                continue
+            item["text"] = m.text or ""
+        out.append(item)
+    return out
+
+
+@router.get("/standards", response_class=HTMLResponse)
+def standards_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    rows = (
+        db.query(Standard, func.count(MessageStandard.message_id))
+        .outerjoin(MessageStandard, MessageStandard.standard_id == Standard.id)
+        .group_by(Standard.id)
+        .order_by(Standard.code)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "standards.html",
+        {"request": request, "user": user, "rows": rows},
+    )
+
+
+@router.post("/standards/add")
+def standards_add(
+    code: str = Form(...),
+    title: str = Form(...),
+    parent_code: str = Form(""),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    code = code.strip()
+    if code and not db.query(Standard).filter_by(code=code).first():
+        db.add(Standard(
+            code=code[:32], title=title.strip()[:255],
+            parent_code=parent_code.strip()[:32] or None,
+            description=description.strip() or None,
+            is_active=1,
+        ))
+        db.commit()
+    return RedirectResponse("/standards", status_code=303)
+
+
+@router.post("/standards/toggle")
+def standards_toggle(
+    id: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    s = db.get(Standard, id)
+    if s:
+        s.is_active = 0 if s.is_active else 1
+        db.commit()
+    return RedirectResponse("/standards", status_code=303)
+
+
+@router.get("/standards/{code}", response_class=HTMLResponse)
+def standard_detail(
+    code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    std = db.query(Standard).filter_by(code=code).first()
+    if not std:
+        raise HTTPException(status_code=404, detail="Standard not found")
+    rows = (
+        db.query(Message, MessageStandard)
+        .join(MessageStandard, MessageStandard.message_id == Message.id)
+        .filter(MessageStandard.standard_id == std.id)
+        .order_by(Message.sent_at.desc())
+        .limit(300)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "standard_detail.html",
+        {"request": request, "user": user, "std": std, "rows": rows},
+    )
+
+
+@router.post("/standards/{code}/attach")
+def standards_attach(
+    code: str,
+    message_id: int = Form(...),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    std = db.query(Standard).filter_by(code=code).first()
+    if not std:
+        raise HTTPException(status_code=404, detail="Standard not found")
+    existing = db.query(MessageStandard).filter_by(
+        message_id=message_id, standard_id=std.id
+    ).first()
+    if existing:
+        existing.source = "manual"
+        if note.strip():
+            existing.note = note.strip()[:512]
+    else:
+        db.add(MessageStandard(
+            message_id=message_id, standard_id=std.id,
+            confidence=1.0, source="manual",
+            note=note.strip()[:512] or None,
+        ))
+    db.commit()
+    return RedirectResponse(f"/standards/{code}", status_code=303)
+
+
+@router.post("/standards/{code}/detach")
+def standards_detach(
+    code: str,
+    message_id: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    std = db.query(Standard).filter_by(code=code).first()
+    if std:
+        db.query(MessageStandard).filter_by(
+            message_id=message_id, standard_id=std.id
+        ).delete()
+        db.commit()
+    return RedirectResponse(f"/standards/{code}", status_code=303)
+
+
+@router.get("/standards/{code}/export.pdf")
+def standard_export_pdf(
+    code: str,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    std = db.query(Standard).filter_by(code=code).first()
+    if not std:
+        raise HTTPException(status_code=404, detail="Standard not found")
+    evidences = _build_evidences(db, std.id)
+    pdf = sar_book_to_pdf(
+        title=f"หลักฐาน SAR มาตรฐานที่ {std.code}",
+        year=std.academic_year or "",
+        sections=[{
+            "code": std.code, "title": std.title,
+            "description": std.description or "",
+            "evidences": evidences,
+        }],
+    )
+    return Response(
+        pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="sar-{std.code}.pdf"'},
+    )
+
+
+@router.get("/sar/export.pdf")
+def sar_export_pdf(
+    year: str = Query("", description="ปีการศึกษา เช่น 2568"),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    stds = (
+        db.query(Standard)
+        .filter_by(is_active=1)
+        .order_by(Standard.code)
+        .all()
+    )
+    sections = []
+    for s in stds:
+        sections.append({
+            "code": s.code, "title": s.title,
+            "description": s.description or "",
+            "evidences": _build_evidences(db, s.id),
+        })
+    pdf = sar_book_to_pdf(title="รายงานการประเมินตนเอง (SAR)", year=year or "-", sections=sections)
+    fname = f"sar-{year or 'all'}.pdf"
+    return Response(
+        pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 # ─── User management (admin only) ────────────────────────────────────────────

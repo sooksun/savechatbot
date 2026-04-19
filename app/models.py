@@ -179,3 +179,28 @@ class Summary(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("group_id", "period", "period_start", name="uq_summary_scope"),)
+
+
+class Standard(Base):
+    __tablename__ = "standards"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    parent_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    academic_year: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    is_active: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MessageStandard(Base):
+    __tablename__ = "message_standards"
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
+    standard_id: Mapped[int] = mapped_column(ForeignKey("standards.id", ondelete="CASCADE"), primary_key=True)
+    confidence: Mapped[float] = mapped_column(default=0.0)
+    source: Mapped[str] = mapped_column(String(16), default="auto", index=True)  # auto | manual
+    note: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    standard: Mapped["Standard"] = relationship()
+    message: Mapped["Message"] = relationship()

@@ -30,10 +30,10 @@ def _generate(prompt: str, *, response_mime_type: str | None = None) -> str | No
     client = _get_client()
     if client is None:
         return None
-    config = types.GenerateContentConfig(
-        temperature=0.3,
-        response_mime_type=response_mime_type,
-    )
+    cfg_kwargs: dict = {"temperature": 0.3}
+    if response_mime_type:
+        cfg_kwargs["response_mime_type"] = response_mime_type
+    config = types.GenerateContentConfig(**cfg_kwargs)
     resp = client.models.generate_content(
         model=settings.GEMINI_MODEL, contents=prompt, config=config
     )
@@ -62,6 +62,43 @@ def classify_message(text: str, categories: list[str]) -> str | None:
         return name or None
     except json.JSONDecodeError:
         return None
+
+
+def classify_standards(text: str, standards: list[dict]) -> list[dict]:
+    """จัดหลักฐานเข้ากับ 'มาตรฐานการศึกษา' (SAR).
+
+    standards = [{"code": "1.1", "title": "..."}, ...]
+    คืน list สูงสุด 3 รายการ: [{"code": "1.1", "confidence": 0.82}, ...]
+    """
+    if not text.strip() or not standards:
+        return []
+    catalog = "\n".join(f"- {s['code']}: {s['title']}" for s in standards)
+    prompt = (
+        "คุณคือผู้ช่วยประเมินหลักฐานประกันคุณภาพการศึกษา (SAR) ของโรงเรียน\n"
+        "วิเคราะห์ว่า 'หลักฐาน' ต่อไปนี้สอดคล้องกับมาตรฐานการศึกษาขั้นพื้นฐานข้อใดบ้าง "
+        "ตอบได้สูงสุด 3 รหัส เรียงตามความเกี่ยวข้อง ถ้าไม่ชัดเจนพอ ให้ตอบ array ว่าง\n"
+        "ให้ความมั่นใจ (confidence) 0.0–1.0 โดย < 0.4 ถือว่าน้อยไม่ต้องตอบ\n\n"
+        f"มาตรฐานที่มี:\n{catalog}\n\n"
+        f"หลักฐาน: \"\"\"{text[:4000]}\"\"\"\n\n"
+        'รูปแบบตอบ (JSON เท่านั้น): [{"code":"<รหัส>","confidence":<0-1>}, ...]'
+    )
+    raw = _generate(prompt, response_mime_type="application/json")
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        out: list[dict] = []
+        valid_codes = {s["code"] for s in standards}
+        for item in data[:3]:
+            code = str(item.get("code", "")).strip()
+            conf = float(item.get("confidence", 0) or 0)
+            if code in valid_codes and conf >= 0.4:
+                out.append({"code": code, "confidence": conf})
+        return out
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return []
 
 
 def ocr_image(data: bytes, mime_type: str = "image/jpeg") -> str | None:
