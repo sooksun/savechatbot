@@ -28,8 +28,18 @@ CREATE TABLE IF NOT EXISTS group_members (
     CONSTRAINT fk_gm_user  FOREIGN KEY (user_id)  REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-ALTER TABLE messages
-    ADD COLUMN IF NOT EXISTS webhook_event_id BIGINT NULL AFTER category_id,
-    ADD COLUMN IF NOT EXISTS is_unsent TINYINT(1) NOT NULL DEFAULT 0 AFTER original_filename,
-    ADD COLUMN IF NOT EXISTS unsent_at DATETIME NULL AFTER is_unsent,
-    ADD CONSTRAINT fk_msg_raw_event FOREIGN KEY (webhook_event_id) REFERENCES webhook_raw_events(id);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS webhook_event_id BIGINT NULL AFTER category_id;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_unsent TINYINT(1) NOT NULL DEFAULT 0 AFTER original_filename;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS unsent_at DATETIME NULL AFTER is_unsent;
+
+-- Drop FK if exists, then re-add (MariaDB has no IF NOT EXISTS for constraints)
+SET @fk_exists := (
+    SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'messages'
+      AND CONSTRAINT_NAME = 'fk_msg_raw_event'
+);
+SET @sql := IF(@fk_exists = 0,
+    'ALTER TABLE messages ADD CONSTRAINT fk_msg_raw_event FOREIGN KEY (webhook_event_id) REFERENCES webhook_raw_events(id)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

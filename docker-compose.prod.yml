@@ -10,8 +10,8 @@ services:
     volumes:
       - /DATA/AppData/www/savechatbot/minio-data:/data
     ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:9900:9000"
+      - "127.0.0.1:9901:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 15s
