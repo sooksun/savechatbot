@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import get_db
 from ..models import Category, DashboardUser, Group, Link, Message, Summary, User
+from ..services.minio_client import get_presigned_url
 from ..services.summarizer import generate_summary
 from .auth import (
     get_current_user,
@@ -36,7 +37,17 @@ def _to_bkk(dt: datetime | None) -> str:
     return dt.astimezone(_BKK).strftime("%Y-%m-%d %H:%M")
 
 
+def _media_url(path: str | None) -> str:
+    if not path:
+        return ""
+    try:
+        return get_presigned_url(path, expires_seconds=3600)
+    except Exception:
+        return ""
+
+
 templates.env.filters["to_bkk"] = _to_bkk
+templates.env.filters["media_url"] = _media_url
 
 router = APIRouter()
 

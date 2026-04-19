@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     DASHBOARD_PASSWORD: str = "change_me"
     DASHBOARD_SECRET_KEY: str = "change-this-secret-key-in-production"
 
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET: str = "savechatbot"
+    MINIO_SECURE: bool = False
+
     DAILY_SUMMARY_AT: str = "22:00"
     WEEKLY_SUMMARY_DOW: int = 0
     WEEKLY_SUMMARY_AT: str = "09:00"

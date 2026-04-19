@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from sqlalchemy import (
-    BigInteger, String, Text, DateTime, Date, ForeignKey, Integer, Index, UniqueConstraint
+    BigInteger, Boolean, String, Text, DateTime, Date, ForeignKey, Integer, Index, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,6 +41,33 @@ class Category(Base):
     is_auto: Mapped[int] = mapped_column(Integer, default=0)  # 1 = discovered by Gemini
 
 
+class WebhookRawEvent(Base):
+    __tablename__ = "webhook_raw_events"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(32), index=True)
+    source_type: Mapped[str | None] = mapped_column(String(16), nullable=True)  # group, user, room
+    line_group_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    line_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    webhook_event_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    payload: Mapped[str] = mapped_column(Text)  # raw JSON
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    group: Mapped["Group"] = relationship()
+    user: Mapped["User"] = relationship()
+
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_member"),)
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -48,11 +75,14 @@ class Message(Base):
     group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    webhook_event_id: Mapped[int | None] = mapped_column(ForeignKey("webhook_raw_events.id"), nullable=True)
     msg_type: Mapped[str] = mapped_column(String(16))  # text, image, sticker, file, link
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    is_unsent: Mapped[bool] = mapped_column(Boolean, default=False)
+    unsent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     group: Mapped["Group"] = relationship()

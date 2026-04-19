@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 
 from ..config import get_settings
+from .minio_client import upload_bytes
 
 settings = get_settings()
 
@@ -34,11 +35,32 @@ _MIME_TO_EXT: dict[str, str] = {
     "text/csv": "csv",
 }
 
+_MIME_CLEAN: dict[str, str] = {
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "mp3": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "ogg": "audio/ogg",
+    "pdf": "application/pdf",
+    "zip": "application/zip",
+    "doc": "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "ppt": "application/vnd.ms-powerpoint",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "txt": "text/plain",
+    "csv": "text/csv",
+}
+
 _CD_FILENAME_RE = re.compile(r'filename\*?=["\']?(?:UTF-8\'\')?([^"\';\r\n]+)', re.IGNORECASE)
 
 
 def _ext_from_headers(headers: httpx.Headers, fallback: str) -> tuple[str, str | None]:
-    """Return (extension, original_filename_or_None)."""
     original_filename: str | None = None
 
     cd = headers.get("content-disposition", "")
@@ -62,29 +84,28 @@ def _content_url(message_id: str) -> str:
 
 @dataclass
 class DownloadResult:
-    relative_path: str
+    relative_path: str   # MinIO object name
     original_filename: str | None
     ext: str
 
 
 async def download_line_content(message_id: str, fallback_ext: str = "jpg") -> DownloadResult:
-    """Download media from LINE Content API. Detects real extension from response headers."""
-    root = Path(settings.MEDIA_ROOT)
-    today = datetime.utcnow().strftime("%Y/%m/%d")
-    target_dir = root / today
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    headers = {"Authorization": f"Bearer {settings.LINE_CHANNEL_ACCESS_TOKEN}"}
+    """Download media from LINE Content API and upload to MinIO."""
+    auth_headers = {"Authorization": f"Bearer {settings.LINE_CHANNEL_ACCESS_TOKEN}"}
     async with httpx.AsyncClient(timeout=60.0) as client:
-        r = await client.get(_content_url(message_id), headers=headers)
+        r = await client.get(_content_url(message_id), headers=auth_headers)
         r.raise_for_status()
 
         ext, original_filename = _ext_from_headers(r.headers, fallback_ext)
-        target = target_dir / f"{message_id}.{ext}"
-        target.write_bytes(r.content)
+        ct = r.headers.get("content-type", "").split(";")[0].strip().lower()
+        content_type = ct if ct else _MIME_CLEAN.get(ext, "application/octet-stream")
+
+        today = datetime.utcnow().strftime("%Y/%m/%d")
+        object_name = f"{today}/{message_id}.{ext}"
+        upload_bytes(object_name, r.content, content_type)
 
     return DownloadResult(
-        relative_path=str(target.relative_to(root)),
+        relative_path=object_name,
         original_filename=original_filename,
         ext=ext,
     )
