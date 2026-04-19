@@ -42,6 +42,7 @@ class Message(Base):
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     group: Mapped["Group"] = relationship()

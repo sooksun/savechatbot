@@ -115,10 +115,13 @@ async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -
 
     text = msg.get("text") if mtype == "text" else None
     media_path: str | None = None
+    original_filename: str | None = None
     if mtype in ("image", "video", "audio", "file"):
-        ext = {"image": "jpg", "video": "mp4", "audio": "m4a", "file": "bin"}.get(mtype, "bin")
+        fallback = {"image": "jpg", "video": "mp4", "audio": "m4a", "file": "bin"}.get(mtype, "bin")
         try:
-            media_path = await download_line_content(line_mid, ext=ext)
+            result = await download_line_content(line_mid, fallback_ext=fallback)
+            media_path = result.relative_path
+            original_filename = result.original_filename
         except Exception as e:
             log.exception("media download failed: %s", e)
 
@@ -132,6 +135,7 @@ async def _handle_event(db: Session, event: dict, background: BackgroundTasks) -
         msg_type=mtype,
         text=text,
         media_path=media_path,
+        original_filename=original_filename,
         sent_at=_ts_to_dt(event.get("timestamp")),
     )
     db.add(m)

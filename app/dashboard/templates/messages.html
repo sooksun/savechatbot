@@ -42,7 +42,9 @@
               {% if m.ocr_text %}<div class="muted" style="margin-top:6px; white-space:pre-wrap">OCR: {{ m.ocr_text }}</div>{% endif %}
             {% else %}
               <span class="tag">{{ m.msg_type }}</span>
-              {% if m.media_path %}<a href="/media/{{ m.media_path }}">ดาวน์โหลด</a>{% endif %}
+              {% if m.media_path %}
+                <a href="/media/{{ m.media_path }}">{{ m.original_filename or m.media_path.split('/')[-1] }}</a>
+              {% endif %}
             {% endif %}
             {% for ln in m.links %}
               <div>
