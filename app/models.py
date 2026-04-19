@@ -89,6 +89,7 @@ class Message(Base):
     user: Mapped["User"] = relationship()
     category: Mapped["Category"] = relationship()
     links: Mapped[list["Link"]] = relationship(back_populates="message", cascade="all, delete-orphan")
+    tags: Mapped[list["MessageTag"]] = relationship(cascade="all, delete-orphan")
 
     __table_args__ = (Index("ix_msg_group_sent", "group_id", "sent_at"),)
 
@@ -102,6 +103,21 @@ class Link(Base):
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     message: Mapped["Message"] = relationship(back_populates="links")
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    color: Mapped[str] = mapped_column(String(16), default="#6366f1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MessageTag(Base):
+    __tablename__ = "message_tags"
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+    tag: Mapped["Tag"] = relationship()
 
 
 class Summary(Base):

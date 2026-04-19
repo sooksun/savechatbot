@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+{% if user.role == 'admin' %}
+<div class="card">
+  <h3>เพิ่มแท็กใหม่</h3>
+  <form method="post" action="/tags/add" class="flex">
+    <input name="name" placeholder="ชื่อแท็ก เช่น สำคัญ, ติดตาม, ประชุม" required/>
+    <input name="color" type="color" value="#6366f1" title="สีแท็ก"/>
+    <button type="submit">เพิ่ม</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <table>
+    <thead><tr><th>แท็ก</th><th>จำนวนข้อความ</th><th></th></tr></thead>
+    <tbody>
+      {% for t, count in rows %}
+        <tr>
+          <td><span class="tag" style="background:{{ t.color }}; color:#fff">{{ t.name }}</span></td>
+          <td>
+            {% if count > 0 %}
+              <a href="/messages?tag_id={{ t.id }}">{{ count }}</a>
+            {% else %}
+              <span class="muted">0</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.role == 'admin' %}
+            <form class="inline" method="post" action="/tags/delete" onsubmit="return confirm('ลบแท็กนี้?')">
+              <input type="hidden" name="id" value="{{ t.id }}"/>
+              <button type="submit" class="secondary">ลบ</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">ยังไม่มีแท็ก</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

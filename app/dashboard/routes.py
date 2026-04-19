@@ -7,13 +7,14 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, text as sa_text
+from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Category, DashboardUser, Group, Link, Message, Summary, User
+from ..models import Category, DashboardUser, Group, Link, Message, MessageTag, Summary, Tag, User
 from ..services.minio_client import get_object_stream, stat_object
+from ..services.pdf_export import summary_to_pdf
 from ..services.summarizer import generate_summary
 from .auth import (
     get_current_user,
@@ -146,21 +147,35 @@ def messages(
     q: str | None = None,
     group_id: int | None = None,
     category_id: int | None = None,
+    tag_id: int | None = None,
     msg_type: str | None = None,
     page: int = Query(1, ge=1),
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
     page_size = 50
-    query = db.query(Message).order_by(Message.sent_at.desc())
+    query = (
+        db.query(Message)
+        .options(selectinload(Message.tags).selectinload(MessageTag.tag))
+        .order_by(Message.sent_at.desc())
+    )
     if q:
-        query = query.filter(Message.text.like(f"%{q}%"))
+        # Try MariaDB FULLTEXT first (boolean mode supports CJK partial); fall back to LIKE
+        try:
+            query = query.filter(
+                sa_text("MATCH(messages.text, messages.ocr_text) AGAINST (:fts IN BOOLEAN MODE)")
+            ).params(fts=q)
+        except Exception:
+            like = f"%{q}%"
+            query = query.filter(or_(Message.text.like(like), Message.ocr_text.like(like)))
     if group_id:
         query = query.filter(Message.group_id == group_id)
     if category_id:
         query = query.filter(Message.category_id == category_id)
     if msg_type:
         query = query.filter(Message.msg_type == msg_type)
+    if tag_id:
+        query = query.join(MessageTag, MessageTag.message_id == Message.id).filter(MessageTag.tag_id == tag_id)
 
     total = query.count()
     rows = query.offset((page - 1) * page_size).limit(page_size).all()
@@ -172,9 +187,114 @@ def messages(
             "pages": max(1, (total + page_size - 1) // page_size),
             "groups": db.query(Group).all(),
             "categories": db.query(Category).order_by(Category.name).all(),
+            "tags": db.query(Tag).order_by(Tag.name).all(),
             "msg_type": msg_type or "",
-            "group_id": group_id, "category_id": category_id,
+            "group_id": group_id, "category_id": category_id, "tag_id": tag_id,
         },
+    )
+
+
+# ─── Tags admin ──────────────────────────────────────────────────────────────
+
+@router.get("/tags", response_class=HTMLResponse)
+def tags_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    rows = (
+        db.query(Tag, func.count(MessageTag.message_id))
+        .outerjoin(MessageTag, MessageTag.tag_id == Tag.id)
+        .group_by(Tag.id)
+        .order_by(Tag.name)
+        .all()
+    )
+    return templates.TemplateResponse("tags.html", {"request": request, "user": user, "rows": rows})
+
+
+@router.post("/tags/add")
+def tags_add(
+    name: str = Form(...),
+    color: str = Form("#6366f1"),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    name = name.strip()
+    if name and not db.query(Tag).filter_by(name=name).first():
+        db.add(Tag(name=name[:64], color=color[:16]))
+        db.commit()
+    return RedirectResponse("/tags", status_code=303)
+
+
+@router.post("/tags/delete")
+def tags_delete(
+    id: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    t = db.get(Tag, id)
+    if t:
+        db.delete(t)
+        db.commit()
+    return RedirectResponse("/tags", status_code=303)
+
+
+@router.post("/messages/{message_id}/tag")
+def message_tag_attach(
+    message_id: int,
+    tag_id: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    if not db.query(MessageTag).filter_by(message_id=message_id, tag_id=tag_id).first():
+        db.add(MessageTag(message_id=message_id, tag_id=tag_id))
+        db.commit()
+    return RedirectResponse(request_referer_or_messages(), status_code=303)
+
+
+@router.post("/messages/{message_id}/untag")
+def message_tag_detach(
+    message_id: int,
+    tag_id: int = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    mt = db.query(MessageTag).filter_by(message_id=message_id, tag_id=tag_id).first()
+    if mt:
+        db.delete(mt)
+        db.commit()
+    return RedirectResponse(request_referer_or_messages(), status_code=303)
+
+
+def request_referer_or_messages() -> str:
+    return "/messages"
+
+
+# ─── PDF export ──────────────────────────────────────────────────────────────
+
+@router.get("/summaries/{summary_id}/pdf")
+def summary_pdf(
+    summary_id: int,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    s = db.get(Summary, summary_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Summary not found")
+    group_name = "ทุกกลุ่ม"
+    if s.group_id:
+        g = db.get(Group, s.group_id)
+        group_name = (g.name if g and g.name else f"group#{s.group_id}")
+    pdf_bytes = summary_to_pdf(
+        title=f"สรุป {s.period} {s.period_start} – {s.period_end}",
+        group_name=group_name,
+        content_md=s.content_md,
+    )
+    filename = f"summary-{s.period}-{s.period_start}.pdf"
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

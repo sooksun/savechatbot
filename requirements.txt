@@ -17,3 +17,5 @@ passlib==1.7.4
 bcrypt==4.0.1
 itsdangerous==2.2.0
 minio==7.2.9
+weasyprint==62.3
+markdown==3.7

@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card">
   <form class="flex" method="get">
-    <input name="q" value="{{ q }}" placeholder="ค้นหาข้อความ..." style="flex:1; min-width:220px"/>
+    <input name="q" value="{{ q }}" placeholder="ค้นหาข้อความ / OCR..." style="flex:1; min-width:220px"/>
     <select name="group_id">
       <option value="">ทุกกลุ่ม</option>
       {% for g in groups %}
@@ -13,6 +13,12 @@
       <option value="">ทุกหมวด</option>
       {% for c in categories %}
         <option value="{{ c.id }}" {% if category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="tag_id">
+      <option value="">ทุกแท็ก</option>
+      {% for t in tags %}
+        <option value="{{ t.id }}" {% if tag_id == t.id %}selected{% endif %}>{{ t.name }}</option>
       {% endfor %}
     </select>
     <select name="msg_type">
@@ -27,7 +33,7 @@
 
 <div class="card">
   <table>
-    <thead><tr><th>เวลา</th><th>ผู้ส่ง</th><th>หมวด</th><th>ข้อความ</th></tr></thead>
+    <thead><tr><th>เวลา</th><th>ผู้ส่ง</th><th>หมวด</th><th>ข้อความ</th><th>แท็ก</th></tr></thead>
     <tbody>
       {% for m in rows %}
         <tr>
@@ -54,9 +60,30 @@
               </div>
             {% endfor %}
           </td>
+          <td style="min-width:180px">
+            {% for mt in m.tags %}
+              <span class="tag" style="background:{{ mt.tag.color }}; color:#fff">
+                {{ mt.tag.name }}
+                {% if user.role == 'admin' %}
+                  <form method="post" action="/messages/{{ m.id }}/untag" style="display:inline">
+                    <input type="hidden" name="tag_id" value="{{ mt.tag.id }}"/>
+                    <button type="submit" style="background:none;border:none;color:#fff;cursor:pointer;padding:0 0 0 4px">×</button>
+                  </form>
+                {% endif %}
+              </span>
+            {% endfor %}
+            {% if user.role == 'admin' and tags %}
+              <form method="post" action="/messages/{{ m.id }}/tag" style="margin-top:4px">
+                <select name="tag_id" style="font-size:12px;padding:2px">
+                  {% for t in tags %}<option value="{{ t.id }}">+ {{ t.name }}</option>{% endfor %}
+                </select>
+                <button type="submit" style="font-size:12px;padding:2px 6px">เพิ่ม</button>
+              </form>
+            {% endif %}
+          </td>
         </tr>
       {% else %}
-        <tr><td colspan="4" class="muted">ไม่มีข้อความ</td></tr>
+        <tr><td colspan="5" class="muted">ไม่มีข้อความ</td></tr>
       {% endfor %}
     </tbody>
   </table>

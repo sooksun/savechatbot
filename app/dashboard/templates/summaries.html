@@ -19,7 +19,10 @@
         <span class="tag">{{ s.period }}</span>
         {{ s.period_start }}{% if s.period != 'daily' %} — {{ s.period_end }}{% endif %}
       </h3>
-      <span class="muted">สร้างเมื่อ {{ s.created_at | to_bkk }}</span>
+      <div class="flex">
+        <a class="secondary" href="/summaries/{{ s.id }}/pdf">⬇ PDF</a>
+        <span class="muted">สร้างเมื่อ {{ s.created_at | to_bkk }}</span>
+      </div>
     </div>
     <div class="md"><pre>{{ s.content_md }}</pre></div>
   </div>
