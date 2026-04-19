@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -17,6 +18,19 @@ from .auth import require_auth
 
 settings = get_settings()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+_BKK = ZoneInfo(settings.TIMEZONE)
+
+
+def _to_bkk(dt: datetime | None) -> str:
+    if dt is None:
+        return "-"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(_BKK).strftime("%Y-%m-%d %H:%M")
+
+
+templates.env.filters["to_bkk"] = _to_bkk
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 

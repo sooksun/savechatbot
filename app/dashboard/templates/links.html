@@ -18,7 +18,7 @@
     <tbody>
       {% for l in rows %}
         <tr>
-          <td class="muted" style="white-space:nowrap">{{ l.message.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="muted" style="white-space:nowrap">{{ l.message.sent_at | to_bkk }}</td>
           <td>{{ l.message.user.display_name if l.message.user else '-' }}</td>
           <td><span class="kind-{{ l.kind }}">{{ l.kind }}</span></td>
           <td>

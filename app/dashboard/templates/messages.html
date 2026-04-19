@@ -31,7 +31,7 @@
     <tbody>
       {% for m in rows %}
         <tr>
-          <td class="muted" style="white-space:nowrap">{{ m.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="muted" style="white-space:nowrap">{{ m.sent_at | to_bkk }}</td>
           <td>{{ m.user.display_name if m.user else '-' }}</td>
           <td><span class="tag">{{ m.category.name if m.category else '-' }}</span></td>
           <td>
