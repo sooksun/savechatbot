@@ -1,0 +1,15 @@
+.venv
+venv
+env
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.production.example
+storage/media
+.git
+.gitignore
+.idea
+.vscode
+*.log
+README.md

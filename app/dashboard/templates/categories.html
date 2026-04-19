@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>เพิ่มหมวดใหม่</h3>
+  <form method="post" action="/categories/add" class="flex">
+    <input name="name" placeholder="ชื่อหมวด" required/>
+    <input name="description" placeholder="คำอธิบาย (ไม่บังคับ)" style="flex:1; min-width:200px"/>
+    <button type="submit">เพิ่ม</button>
+  </form>
+  <p class="muted" style="margin-top:10px">
+    หมวดที่ Gemini ค้นพบเองจะถูกติดป้าย auto; Admin สามารถลบหรือเพิ่มหมวดหลักได้ที่นี่
+  </p>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>ชื่อ</th><th>คำอธิบาย</th><th>ที่มา</th><th></th></tr></thead>
+    <tbody>
+      {% for c in rows %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td class="muted">{{ c.description or '-' }}</td>
+          <td>{% if c.is_auto %}<span class="tag">auto</span>{% else %}<span class="tag">manual</span>{% endif %}</td>
+          <td>
+            <form class="inline" method="post" action="/categories/delete" onsubmit="return confirm('ลบหมวดนี้?')">
+              <input type="hidden" name="id" value="{{ c.id }}"/>
+              <button type="submit" class="secondary">ลบ</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

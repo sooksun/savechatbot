@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>สร้างสรุปทันที</h3>
+  <form method="post" action="/summaries/run" class="flex">
+    <select name="period">
+      <option value="daily">รายวัน</option>
+      <option value="weekly">รายสัปดาห์</option>
+    </select>
+    <input type="date" name="ref" placeholder="วันที่อ้างอิง (ไม่ระบุ = วันนี้)"/>
+    <button type="submit">สร้างสรุป</button>
+  </form>
+</div>
+
+{% for s in rows %}
+  <div class="card">
+    <div class="flex" style="justify-content:space-between">
+      <h3>
+        <span class="tag">{{ s.period }}</span>
+        {{ s.period_start }}{% if s.period != 'daily' %} — {{ s.period_end }}{% endif %}
+      </h3>
+      <span class="muted">สร้างเมื่อ {{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </div>
+    <div class="md"><pre>{{ s.content_md }}</pre></div>
+  </div>
+{% else %}
+  <div class="card muted">ยังไม่มีสรุป</div>
+{% endfor %}
+{% endblock %}

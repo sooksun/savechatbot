@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <form class="flex" method="get">
+    <select name="kind">
+      <option value="">ทุกประเภท</option>
+      {% for k in ['youtube','google_drive','canva','other'] %}
+        <option value="{{ k }}" {% if kind == k %}selected{% endif %}>{{ k }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">กรอง</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>เวลา</th><th>ผู้ส่ง</th><th>ประเภท</th><th>URL</th></tr></thead>
+    <tbody>
+      {% for l in rows %}
+        <tr>
+          <td class="muted" style="white-space:nowrap">{{ l.message.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ l.message.user.display_name if l.message.user else '-' }}</td>
+          <td><span class="kind-{{ l.kind }}">{{ l.kind }}</span></td>
+          <td>
+            <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title or l.url }}</a>
+            {% if l.title %}<div class="muted" style="font-size:12px">{{ l.url }}</div>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">ไม่มีลิงก์</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

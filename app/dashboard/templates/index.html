@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-3">
+  <div class="card"><div class="muted">ข้อความทั้งหมด</div><h2>{{ total }}</h2></div>
+  <div class="card"><div class="muted">ข้อความ 7 วันล่าสุด</div><h2>{{ week }}</h2></div>
+  <div class="card"><div class="muted">จำนวนกลุ่ม</div><h2>{{ groups|length }}</h2></div>
+</div>
+
+<div class="card">
+  <h3>ข้อความตามหมวดหมู่</h3>
+  <table>
+    <thead><tr><th>หมวด</th><th>จำนวน</th></tr></thead>
+    <tbody>
+      {% for name, cnt in categories %}
+        <tr><td>{{ name }}</td><td>{{ cnt }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="muted">ยังไม่มีข้อมูล</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>กลุ่ม LINE</h3>
+  <table>
+    <thead><tr><th>ชื่อกลุ่ม</th><th>Group ID</th></tr></thead>
+    <tbody>
+      {% for g in groups %}
+        <tr><td>{{ g.name or '-' }}</td><td><code>{{ g.line_group_id }}</code></td></tr>
+      {% else %}
+        <tr><td colspan="2" class="muted">ยังไม่มีกลุ่มที่เชื่อมต่อ</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

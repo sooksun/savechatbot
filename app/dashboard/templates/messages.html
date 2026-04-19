@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <form class="flex" method="get">
+    <input name="q" value="{{ q }}" placeholder="ค้นหาข้อความ..." style="flex:1; min-width:220px"/>
+    <select name="group_id">
+      <option value="">ทุกกลุ่ม</option>
+      {% for g in groups %}
+        <option value="{{ g.id }}" {% if group_id == g.id %}selected{% endif %}>{{ g.name or g.line_group_id }}</option>
+      {% endfor %}
+    </select>
+    <select name="category_id">
+      <option value="">ทุกหมวด</option>
+      {% for c in categories %}
+        <option value="{{ c.id }}" {% if category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="msg_type">
+      <option value="">ทุกประเภท</option>
+      {% for t in ['text','image','video','audio','file','sticker'] %}
+        <option value="{{ t }}" {% if msg_type == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">ค้นหา</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>เวลา</th><th>ผู้ส่ง</th><th>หมวด</th><th>ข้อความ</th></tr></thead>
+    <tbody>
+      {% for m in rows %}
+        <tr>
+          <td class="muted" style="white-space:nowrap">{{ m.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ m.user.display_name if m.user else '-' }}</td>
+          <td><span class="tag">{{ m.category.name if m.category else '-' }}</span></td>
+          <td>
+            {% if m.msg_type == 'text' %}
+              {{ m.text }}
+            {% elif m.msg_type == 'image' and m.media_path %}
+              <img class="thumb" src="/media/{{ m.media_path }}" alt=""/>
+              {% if m.ocr_text %}<div class="muted" style="margin-top:6px; white-space:pre-wrap">OCR: {{ m.ocr_text }}</div>{% endif %}
+            {% else %}
+              <span class="tag">{{ m.msg_type }}</span>
+              {% if m.media_path %}<a href="/media/{{ m.media_path }}">ดาวน์โหลด</a>{% endif %}
+            {% endif %}
+            {% for ln in m.links %}
+              <div>
+                <span class="kind-{{ ln.kind }}">[{{ ln.kind }}]</span>
+                <a href="{{ ln.url }}" target="_blank" rel="noopener">{{ ln.title or ln.url }}</a>
+                {% if ln.title %}<div class="muted" style="font-size:12px">{{ ln.url }}</div>{% endif %}
+              </div>
+            {% endfor %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">ไม่มีข้อความ</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="flex" style="margin-top:10px; justify-content:space-between">
+    <span class="muted">หน้า {{ page }} / {{ pages }}</span>
+    <div class="flex">
+      {% if page > 1 %}<a href="?page={{ page-1 }}&q={{ q }}">« ก่อนหน้า</a>{% endif %}
+      {% if page < pages %}<a href="?page={{ page+1 }}&q={{ q }}">ถัดไป »</a>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
