@@ -64,15 +64,12 @@ def classify_message(text: str, categories: list[str]) -> str | None:
         return None
 
 
-def ocr_image(path: str, mime_type: str = "image/jpeg") -> str | None:
-    """Extract readable text from an image file using Gemini. Returns None on failure."""
+def ocr_image(data: bytes, mime_type: str = "image/jpeg") -> str | None:
+    """Extract readable text from image bytes using Gemini. Returns None on failure."""
     client = _get_client()
     if client is None:
         return None
-    try:
-        with open(path, "rb") as f:
-            data = f.read()
-    except OSError:
+    if not data:
         return None
     prompt = (
         "สกัดข้อความทั้งหมดที่อ่านได้ในรูปภาพนี้ (ภาษาไทย/อังกฤษ) "

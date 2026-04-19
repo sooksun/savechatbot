@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>📋 Action Items — งานที่มอบหมาย</h3>
+  <form class="flex" method="get">
+    <select name="status">
+      <option value="">ทุกสถานะ</option>
+      <option value="open" {% if status == 'open' %}selected{% endif %}>open</option>
+      <option value="done" {% if status == 'done' %}selected{% endif %}>done</option>
+      <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>cancelled</option>
+    </select>
+    <select name="group_id">
+      <option value="">ทุกกลุ่ม</option>
+      {% for g in groups %}
+        <option value="{{ g.id }}" {% if group_id == g.id %}selected{% endif %}>{{ g.name or g.line_group_id }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">กรอง</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr>
+      <th>สถานะ</th><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดส่ง</th><th>สร้างเมื่อ</th>
+      {% if user.role == 'admin' %}<th></th>{% endif %}
+    </tr></thead>
+    <tbody>
+      {% for a in rows %}
+        <tr>
+          <td>
+            {% if a.status == 'open' %}<span class="tag" style="background:#fbbf24;color:#0b1220">open</span>
+            {% elif a.status == 'done' %}<span class="tag" style="background:#22c55e;color:#0b1220">done</span>
+            {% else %}<span class="tag" style="background:#64748b;color:#fff">cancelled</span>{% endif %}
+          </td>
+          <td>{{ a.task }}</td>
+          <td>{{ a.assignee or '-' }}</td>
+          <td class="muted">{{ a.due_date or '-' }}</td>
+          <td class="muted" style="white-space:nowrap">{{ a.created_at | to_bkk }}</td>
+          {% if user.role == 'admin' %}
+          <td>
+            <form method="post" action="/actions/{{ a.id }}/status" class="inline">
+              <select name="status" onchange="this.form.submit()" style="font-size:12px">
+                <option value="open"      {% if a.status == 'open' %}selected{% endif %}>open</option>
+                <option value="done"      {% if a.status == 'done' %}selected{% endif %}>done</option>
+                <option value="cancelled" {% if a.status == 'cancelled' %}selected{% endif %}>cancelled</option>
+              </select>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">ยังไม่มีงานที่มอบหมาย</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

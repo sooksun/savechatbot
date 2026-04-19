@@ -18,6 +18,15 @@ services:
       timeout: 5s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: savechatbot-qdrant
+    restart: unless-stopped
+    volumes:
+      - /DATA/AppData/www/savechatbot/qdrant-data:/qdrant/storage
+    expose:
+      - "6333"
+
   app:
     build: .
     image: savechatbot:latest
@@ -29,6 +38,8 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     volumes:
       - /DATA/AppData/www/savechatbot/storage:/app/storage
     ports:

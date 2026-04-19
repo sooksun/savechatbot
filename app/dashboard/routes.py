@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Category, DashboardUser, Group, Link, Message, MessageTag, Summary, Tag, User
+from ..models import (
+    ActionItem, Category, DashboardUser, Decision, Entity, EntityMention,
+    Group, Link, Message, MessageTag, Summary, Tag, User,
+)
+from ..services.embeddings import search as semantic_search
 from ..services.minio_client import get_object_stream, stat_object
 from ..services.pdf_export import summary_to_pdf
 from ..services.summarizer import generate_summary
@@ -160,14 +164,16 @@ def messages(
         .order_by(Message.sent_at.desc())
     )
     if q:
-        # Try MariaDB FULLTEXT first (boolean mode supports CJK partial); fall back to LIKE
         try:
             query = query.filter(
-                sa_text("MATCH(messages.text, messages.ocr_text) AGAINST (:fts IN BOOLEAN MODE)")
+                sa_text("MATCH(messages.text, messages.ocr_text, messages.doc_text) "
+                        "AGAINST (:fts IN BOOLEAN MODE)")
             ).params(fts=q)
         except Exception:
             like = f"%{q}%"
-            query = query.filter(or_(Message.text.like(like), Message.ocr_text.like(like)))
+            query = query.filter(or_(
+                Message.text.like(like), Message.ocr_text.like(like), Message.doc_text.like(like)
+            ))
     if group_id:
         query = query.filter(Message.group_id == group_id)
     if category_id:
@@ -190,6 +196,43 @@ def messages(
             "tags": db.query(Tag).order_by(Tag.name).all(),
             "msg_type": msg_type or "",
             "group_id": group_id, "category_id": category_id, "tag_id": tag_id,
+        },
+    )
+
+
+# ─── Semantic search ─────────────────────────────────────────────────────────
+
+@router.get("/search", response_class=HTMLResponse)
+def search_page(
+    request: Request,
+    q: str | None = None,
+    group_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    results: list[dict] = []
+    messages_by_id: dict[int, Message] = {}
+    if q:
+        hits = semantic_search(q, group_id=group_id, limit=30)
+        ids = [h["message_id"] for h in hits if h.get("message_id")]
+        if ids:
+            rows = (
+                db.query(Message)
+                .options(selectinload(Message.tags).selectinload(MessageTag.tag))
+                .filter(Message.id.in_(ids))
+                .all()
+            )
+            messages_by_id = {m.id: m for m in rows}
+        for h in hits:
+            m = messages_by_id.get(h["message_id"])
+            if m:
+                results.append({"message": m, "score": h["score"]})
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request, "user": user, "q": q or "",
+            "results": results, "groups": db.query(Group).all(),
+            "group_id": group_id,
         },
     )
 
@@ -268,6 +311,141 @@ def message_tag_detach(
 
 def request_referer_or_messages() -> str:
     return "/messages"
+
+
+# ─── Knowledge: entities / decisions / actions / wiki ────────────────────────
+
+@router.get("/entities", response_class=HTMLResponse)
+def entities_page(
+    request: Request,
+    kind: str | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    query = db.query(Entity).order_by(Entity.mention_count.desc())
+    if kind:
+        query = query.filter(Entity.kind == kind)
+    if q:
+        query = query.filter(Entity.name.like(f"%{q}%"))
+    rows = query.limit(500).all()
+    return templates.TemplateResponse(
+        "entities.html",
+        {"request": request, "user": user, "rows": rows, "kind": kind or "", "q": q or ""},
+    )
+
+
+@router.get("/entities/{entity_id}", response_class=HTMLResponse)
+def entity_detail(
+    entity_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    e = db.get(Entity, entity_id)
+    if not e:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    mentions = (
+        db.query(Message)
+        .join(EntityMention, EntityMention.message_id == Message.id)
+        .filter(EntityMention.entity_id == entity_id)
+        .order_by(Message.sent_at.desc())
+        .limit(200)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "entity_detail.html",
+        {"request": request, "user": user, "entity": e, "mentions": mentions},
+    )
+
+
+@router.get("/decisions", response_class=HTMLResponse)
+def decisions_page(
+    request: Request,
+    group_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    query = db.query(Decision).order_by(Decision.decided_at.desc())
+    if group_id:
+        query = query.filter(Decision.group_id == group_id)
+    rows = query.limit(300).all()
+    return templates.TemplateResponse(
+        "decisions.html",
+        {"request": request, "user": user, "rows": rows,
+         "groups": db.query(Group).all(), "group_id": group_id},
+    )
+
+
+@router.get("/actions", response_class=HTMLResponse)
+def actions_page(
+    request: Request,
+    status: str | None = None,
+    group_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    query = db.query(ActionItem).order_by(
+        ActionItem.status.asc(), ActionItem.due_date.asc().nulls_last(), ActionItem.created_at.desc()
+    )
+    if status:
+        query = query.filter(ActionItem.status == status)
+    if group_id:
+        query = query.filter(ActionItem.group_id == group_id)
+    rows = query.limit(500).all()
+    return templates.TemplateResponse(
+        "actions.html",
+        {"request": request, "user": user, "rows": rows,
+         "groups": db.query(Group).all(),
+         "status": status or "", "group_id": group_id},
+    )
+
+
+@router.post("/actions/{action_id}/status")
+def action_update_status(
+    action_id: int,
+    status: str = Form(...),
+    db: Session = Depends(get_db),
+    admin: DashboardUser = Depends(require_admin),
+):
+    a = db.get(ActionItem, action_id)
+    if a and status in ("open", "done", "cancelled"):
+        a.status = status
+        db.commit()
+    return RedirectResponse("/actions", status_code=303)
+
+
+@router.get("/wiki", response_class=HTMLResponse)
+def wiki_index(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: DashboardUser = Depends(get_current_user),
+):
+    topics = (
+        db.query(Entity)
+        .filter(Entity.kind == "topic")
+        .order_by(Entity.mention_count.desc())
+        .limit(100)
+        .all()
+    )
+    people = (
+        db.query(Entity)
+        .filter(Entity.kind == "person")
+        .order_by(Entity.mention_count.desc())
+        .limit(50)
+        .all()
+    )
+    orgs = (
+        db.query(Entity)
+        .filter(Entity.kind == "org")
+        .order_by(Entity.mention_count.desc())
+        .limit(50)
+        .all()
+    )
+    return templates.TemplateResponse(
+        "wiki.html",
+        {"request": request, "user": user, "topics": topics, "people": people, "orgs": orgs},
+    )
 
 
 # ─── PDF export ──────────────────────────────────────────────────────────────

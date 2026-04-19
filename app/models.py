@@ -79,6 +79,7 @@ class Message(Base):
     msg_type: Mapped[str] = mapped_column(String(16))  # text, image, sticker, file, link
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    doc_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_unsent: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -101,6 +102,8 @@ class Link(Base):
     url: Mapped[str] = mapped_column(String(1024))
     kind: Mapped[str] = mapped_column(String(32))  # youtube, google_drive, canva, other
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     message: Mapped["Message"] = relationship(back_populates="links")
 
@@ -118,6 +121,51 @@ class MessageTag(Base):
     message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
     tag: Mapped["Tag"] = relationship()
+
+
+class Entity(Base):
+    __tablename__ = "entities"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)  # person, org, place, date, topic, money, other
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    normalized: Mapped[str] = mapped_column(String(255), index=True)
+    mention_count: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint("kind", "normalized", name="uq_entity_kind_name"),)
+
+
+class EntityMention(Base):
+    __tablename__ = "entity_mentions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    entity: Mapped["Entity"] = relationship()
+    message: Mapped["Message"] = relationship()
+    __table_args__ = (UniqueConstraint("entity_id", "message_id", name="uq_em"),)
+
+
+class Decision(Base):
+    __tablename__ = "decisions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True, index=True)
+    summary: Mapped[str] = mapped_column(String(512))
+    decided_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    message: Mapped["Message"] = relationship()
+
+
+class ActionItem(Base):
+    __tablename__ = "action_items"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), nullable=True, index=True)
+    task: Mapped[str] = mapped_column(String(512))
+    assignee: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open, done, cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    message: Mapped["Message"] = relationship()
 
 
 class Summary(Base):

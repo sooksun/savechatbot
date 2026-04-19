@@ -253,7 +253,12 @@ async def _handle_message(db: Session, event: dict, raw: WebhookRawEvent, backgr
         db.add(Link(message_id=m.id, url=ln.url, kind=ln.kind))
     db.commit()
 
-    needs_enrich = m.msg_type == "image" or bool(m.links) or extract_links(text)
+    needs_enrich = (
+        m.msg_type in ("image", "file")
+        or bool(m.links)
+        or extract_links(text)
+        or bool(text)  # text messages still get embedded for semantic search
+    )
     if needs_enrich:
         background.add_task(enrich_message, m.id)
 

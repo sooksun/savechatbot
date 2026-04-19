@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     DASHBOARD_PASSWORD: str = "change_me"
     DASHBOARD_SECRET_KEY: str = "change-this-secret-key-in-production"
 
+    QDRANT_URL: str = "http://savechatbot-qdrant:6333"
+    QDRANT_COLLECTION: str = "savechatbot_messages"
+    EMBED_MODEL: str = "text-embedding-004"
+    EMBED_DIM: int = 768
+
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"

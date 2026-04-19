@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <a href="/entities" class="muted">← กลับ</a>
+  <h2>{{ entity.name }} <span class="tag">{{ entity.kind }}</span></h2>
+  <p class="muted">ถูกอ้างถึง {{ entity.mention_count }} ครั้ง · บันทึกเมื่อ {{ entity.created_at | to_bkk }}</p>
+</div>
+
+<div class="card">
+  <h3>📌 ข้อความที่กล่าวถึง</h3>
+  <table>
+    <thead><tr><th>เวลา</th><th>ผู้ส่ง</th><th>ข้อความ</th></tr></thead>
+    <tbody>
+      {% for m in mentions %}
+        <tr>
+          <td class="muted" style="white-space:nowrap">{{ m.sent_at | to_bkk }}</td>
+          <td>{{ m.user.display_name if m.user else '-' }}</td>
+          <td>
+            {% if m.text %}{{ m.text }}{% endif %}
+            {% if m.ocr_text %}<div class="muted">OCR: {{ m.ocr_text[:200] }}…</div>{% endif %}
+            {% if m.doc_text %}<div class="muted">DOC: {{ m.doc_text[:200] }}…</div>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">ไม่มีข้อความ</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

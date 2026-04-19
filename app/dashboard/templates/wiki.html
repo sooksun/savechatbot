@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>📖 Wiki ความรู้กลุ่ม</h2>
+  <p class="muted">รวม Topic / Person / Organization ที่ถูกพูดถึงบ่อย — คลิกเพื่อดูข้อความที่กล่าวถึง</p>
+</div>
+
+<div class="grid grid-3">
+  <div class="card">
+    <h3>🏷️ หัวข้อ (Topics)</h3>
+    {% for e in topics %}
+      <div style="margin:6px 0">
+        <a href="/entities/{{ e.id }}" class="tag" style="background:#6366f1;color:#fff">
+          {{ e.name }} <span style="opacity:.7">×{{ e.mention_count }}</span>
+        </a>
+      </div>
+    {% else %}
+      <p class="muted">ยังไม่มี</p>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h3>👤 บุคคล (People)</h3>
+    {% for e in people %}
+      <div style="margin:6px 0">
+        <a href="/entities/{{ e.id }}" class="tag" style="background:#0ea5e9;color:#fff">
+          {{ e.name }} <span style="opacity:.7">×{{ e.mention_count }}</span>
+        </a>
+      </div>
+    {% else %}
+      <p class="muted">ยังไม่มี</p>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h3>🏢 องค์กร (Organizations)</h3>
+    {% for e in orgs %}
+      <div style="margin:6px 0">
+        <a href="/entities/{{ e.id }}" class="tag" style="background:#f59e0b;color:#0b1220">
+          {{ e.name }} <span style="opacity:.7">×{{ e.mention_count }}</span>
+        </a>
+      </div>
+    {% else %}
+      <p class="muted">ยังไม่มี</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

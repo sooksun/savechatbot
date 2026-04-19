@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>📚 Entities — สิ่งที่ถูกพูดถึง</h3>
+  <form class="flex" method="get">
+    <input name="q" value="{{ q }}" placeholder="ค้นหาชื่อ..." style="flex:1; min-width:200px"/>
+    <select name="kind">
+      <option value="">ทุกประเภท</option>
+      {% for k in ['person','org','place','date','topic','money','other'] %}
+        <option value="{{ k }}" {% if kind == k %}selected{% endif %}>{{ k }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">กรอง</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>ประเภท</th><th>ชื่อ</th><th>จำนวนการอ้างถึง</th></tr></thead>
+    <tbody>
+      {% for e in rows %}
+        <tr>
+          <td><span class="tag">{{ e.kind }}</span></td>
+          <td><a href="/entities/{{ e.id }}">{{ e.name }}</a></td>
+          <td>{{ e.mention_count }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

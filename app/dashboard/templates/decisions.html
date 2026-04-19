@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>✅ การตัดสินใจ (Decisions)</h3>
+  <form class="flex" method="get">
+    <select name="group_id">
+      <option value="">ทุกกลุ่ม</option>
+      {% for g in groups %}
+        <option value="{{ g.id }}" {% if group_id == g.id %}selected{% endif %}>{{ g.name or g.line_group_id }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">กรอง</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>เวลา</th><th>การตัดสินใจ</th><th>จากข้อความ</th></tr></thead>
+    <tbody>
+      {% for d in rows %}
+        <tr>
+          <td class="muted" style="white-space:nowrap">{{ d.decided_at | to_bkk }}</td>
+          <td>{{ d.summary }}</td>
+          <td class="muted" style="font-size:12px">
+            {% if d.message %}
+              {{ d.message.user.display_name if d.message.user else '-' }}:
+              {{ (d.message.text or d.message.doc_text or '-')[:100] }}
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">ยังไม่มีการตัดสินใจที่บันทึก</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

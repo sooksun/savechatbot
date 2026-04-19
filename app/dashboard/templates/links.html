@@ -24,6 +24,12 @@
           <td>
             <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title or l.url }}</a>
             {% if l.title %}<div class="muted" style="font-size:12px">{{ l.url }}</div>{% endif %}
+            {% if l.summary %}
+              <details style="margin-top:6px">
+                <summary style="cursor:pointer;color:var(--accent)">📄 สรุปเนื้อหา</summary>
+                <div class="md" style="margin-top:6px"><pre style="white-space:pre-wrap">{{ l.summary }}</pre></div>
+              </details>
+            {% endif %}
           </td>
         </tr>
       {% else %}

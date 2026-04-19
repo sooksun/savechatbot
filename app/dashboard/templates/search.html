@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>🧠 ค้นหาเชิงความหมาย (Semantic Search)</h3>
+  <p class="muted">ค้นข้อความ/ไฟล์/วิดีโอ ด้วยความหมาย (ไม่ต้องตรงคำ) — ผลจัดเรียงตามความใกล้เคียง</p>
+  <form class="flex" method="get">
+    <input name="q" value="{{ q }}" placeholder="เช่น: ที่ประชุมเรื่องงบประมาณ Q3 ที่ถูกเลื่อน" style="flex:1; min-width:300px"/>
+    <select name="group_id">
+      <option value="">ทุกกลุ่ม</option>
+      {% for g in groups %}
+        <option value="{{ g.id }}" {% if group_id == g.id %}selected{% endif %}>{{ g.name or g.line_group_id }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">ค้นหา</button>
+  </form>
+</div>
+
+{% if q %}
+<div class="card">
+  <p class="muted">ผลลัพธ์: {{ results | length }} รายการ</p>
+  <table>
+    <thead><tr><th>คะแนน</th><th>เวลา</th><th>ผู้ส่ง</th><th>ข้อความ</th></tr></thead>
+    <tbody>
+      {% for r in results %}
+        {% set m = r.message %}
+        <tr>
+          <td><span class="tag" style="background:#38bdf8;color:#0b1220">{{ '%.3f' | format(r.score) }}</span></td>
+          <td class="muted" style="white-space:nowrap">{{ m.sent_at | to_bkk }}</td>
+          <td>{{ m.user.display_name if m.user else '-' }}</td>
+          <td>
+            {% if m.text %}{{ m.text }}{% endif %}
+            {% if m.media_path %}
+              <div style="margin-top:4px">
+                <span class="tag">{{ m.msg_type }}</span>
+                <a href="{{ m.media_path | media_url }}">{{ m.original_filename or 'ไฟล์' }}</a>
+              </div>
+            {% endif %}
+            {% if m.ocr_text %}<div class="muted" style="margin-top:4px">OCR: {{ m.ocr_text[:200] }}{% if m.ocr_text|length > 200 %}…{% endif %}</div>{% endif %}
+            {% if m.doc_text %}<div class="muted" style="margin-top:4px">DOC: {{ m.doc_text[:200] }}{% if m.doc_text|length > 200 %}…{% endif %}</div>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">ไม่พบผลลัพธ์</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

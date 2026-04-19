@@ -59,6 +59,17 @@ def get_presigned_url(object_name: str, expires_seconds: int = 3600) -> str:
     )
 
 
+def get_object_bytes(object_name: str) -> bytes:
+    s = get_settings()
+    client = get_minio()
+    resp = client.get_object(s.MINIO_BUCKET, object_name)
+    try:
+        return resp.read()
+    finally:
+        resp.close()
+        resp.release_conn()
+
+
 def get_object_stream(object_name: str):
     """Return MinIO response object (caller must close). Use for streaming."""
     s = get_settings()

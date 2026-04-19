@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import Group, Summary
 from .line_client import reply_message
+from .rag import answer as rag_answer
 from .summarizer import generate_summary
 
 HELP_TEXT = (
@@ -16,6 +17,7 @@ HELP_TEXT = (
     "!สรุปวันนี้ — สรุปบทสนทนาวันนี้\n"
     "!สรุปเมื่อวาน — สรุปของเมื่อวาน\n"
     "!สรุปสัปดาห์ — สรุปสัปดาห์ปัจจุบัน\n"
+    "!ถาม <คำถาม> — ถาม AI จากความรู้ในกลุ่ม\n"
     "!help — แสดงคำสั่ง"
 )
 
@@ -53,11 +55,22 @@ async def handle(text: str, reply_token: str, line_group_id: str | None) -> None
             db.close()
         await reply_message(reply_token, content or "ยังไม่มีข้อความในช่วงเวลานี้")
 
+    stripped = text.strip()
     if cmd.startswith("!สรุปวันนี้") or cmd == "!today":
         await _send_summary("daily", today)
     elif cmd.startswith("!สรุปเมื่อวาน") or cmd == "!yesterday":
         await _send_summary("daily", today - timedelta(days=1))
     elif cmd.startswith("!สรุปสัปดาห์") or cmd in ("!week", "!weekly"):
         await _send_summary("weekly", today)
+    elif stripped.startswith("!ถาม") or stripped.lower().startswith("!ask"):
+        # Strip leading command token + optional whitespace
+        parts = stripped.split(None, 1)
+        q = parts[1].strip() if len(parts) > 1 else ""
+        if not q:
+            await reply_message(reply_token, "พิมพ์: !ถาม <คำถามของคุณ>")
+            return
+        result = rag_answer(q, line_group_id)
+        # LINE reply limit: 5000 chars
+        await reply_message(reply_token, result[:4900])
     else:
         await reply_message(reply_token, HELP_TEXT)

@@ -12,6 +12,7 @@ from .dashboard import routes as dashboard_routes
 from .dashboard.auth import hash_password
 from .models import DashboardUser
 from .scheduler import start as start_scheduler, stop as stop_scheduler
+from .services.embeddings import ensure_collection as ensure_qdrant
 from .services.minio_client import ensure_bucket
 from .webhook import router as webhook_router
 
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     Path(settings.MEDIA_ROOT).mkdir(parents=True, exist_ok=True)
     ensure_bucket()
+    ensure_qdrant()
     _seed_admin()
     start_scheduler()
     try:
