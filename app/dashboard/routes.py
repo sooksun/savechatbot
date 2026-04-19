@@ -48,6 +48,16 @@ def _safe_color(value: str, default: str = "#6366f1") -> str:
     return value if _HEX_COLOR_RE.match(value or "") else default
 
 
+def _opt_int(value: str | None) -> int | None:
+    """HTML <select> posts '' for 'any' — treat empty/invalid as no filter."""
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _safe_media_path(path: str) -> str:
     # Object keys are stored flat (e.g. "2026/04/foo.jpg"). Reject anything that looks
     # like an attempted traversal or absolute path.
@@ -178,15 +188,18 @@ def index(
 def messages(
     request: Request,
     q: str | None = None,
-    group_id: int | None = None,
-    category_id: int | None = None,
-    tag_id: int | None = None,
+    group_id: str | None = None,
+    category_id: str | None = None,
+    tag_id: str | None = None,
     msg_type: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(None, ge=1, le=200),
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
+    group_id = _opt_int(group_id)
+    category_id = _opt_int(category_id)
+    tag_id = _opt_int(tag_id)
     page_size = page_size or settings.DASHBOARD_PAGE_SIZE
     query = (
         db.query(Message)
@@ -238,10 +251,11 @@ def messages(
 def search_page(
     request: Request,
     q: str | None = None,
-    group_id: int | None = None,
+    group_id: str | None = None,
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
+    group_id = _opt_int(group_id)
     results: list[dict] = []
     messages_by_id: dict[int, Message] = {}
     if q:
@@ -390,10 +404,11 @@ def entity_detail(
 @router.get("/decisions", response_class=HTMLResponse)
 def decisions_page(
     request: Request,
-    group_id: int | None = None,
+    group_id: str | None = None,
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
+    group_id = _opt_int(group_id)
     query = db.query(Decision).order_by(Decision.decided_at.desc())
     if group_id:
         query = query.filter(Decision.group_id == group_id)
@@ -409,10 +424,11 @@ def decisions_page(
 def actions_page(
     request: Request,
     status: str | None = None,
-    group_id: int | None = None,
+    group_id: str | None = None,
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
+    group_id = _opt_int(group_id)
     query = db.query(ActionItem).order_by(
         ActionItem.status.asc(), ActionItem.due_date.asc().nulls_last(), ActionItem.created_at.desc()
     )
