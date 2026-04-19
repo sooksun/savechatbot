@@ -85,6 +85,11 @@ class Message(Base):
     is_unsent: Mapped[bool] = mapped_column(Boolean, default=False)
     unsent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    # Retry queue (Sprint 4): 'pending' until enrichment completes, 'done' on success,
+    # 'failed' if any step threw fatal. Re-enrichment worker picks up 'failed'/'pending'.
+    enrich_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    enrich_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    enrich_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     group: Mapped["Group"] = relationship()
     user: Mapped["User"] = relationship()

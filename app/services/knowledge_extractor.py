@@ -5,9 +5,12 @@ import json
 import logging
 from datetime import date, datetime
 
+from ..config import get_settings
 from ..database import SessionLocal
 from ..models import ActionItem, Decision, Entity, EntityMention, Message
 from .gemini_client import _generate
+
+settings = get_settings()
 
 log = logging.getLogger(__name__)
 
@@ -74,14 +77,23 @@ def extract_knowledge(message_id: int) -> None:
         if not body or len(body) < 10:
             return
 
-        raw = _generate(_PROMPT.format(body=body[:8000]), response_mime_type="application/json")
+        raw = _generate(
+            _PROMPT.format(body=body[: settings.KNOWLEDGE_BODY_MAX]),
+            response_mime_type="application/json",
+        )
         if not raw:
             return
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            log.warning("knowledge JSON parse failed for msg %s", message_id)
+            log.warning("knowledge JSON parse failed for msg %s: %s", message_id, raw[:200])
             return
+
+        # Batch-load existing mentions for this message to avoid N+1 checks.
+        existing_mention_eids = {
+            eid for (eid,) in db.query(EntityMention.entity_id)
+            .filter(EntityMention.message_id == m.id).all()
+        }
 
         # Entities
         for ent in data.get("entities", []) or []:
@@ -92,15 +104,17 @@ def extract_knowledge(message_id: int) -> None:
             normalized = _norm(name)
             existing = db.query(Entity).filter_by(kind=kind, normalized=normalized).first()
             if existing:
-                existing.mention_count += 1
                 ent_id = existing.id
+                if ent_id not in existing_mention_eids:
+                    existing.mention_count += 1
             else:
                 e = Entity(kind=kind, name=name, normalized=normalized, mention_count=1)
                 db.add(e)
                 db.flush()
                 ent_id = e.id
-            if not db.query(EntityMention).filter_by(entity_id=ent_id, message_id=m.id).first():
+            if ent_id not in existing_mention_eids:
                 db.add(EntityMention(entity_id=ent_id, message_id=m.id))
+                existing_mention_eids.add(ent_id)
 
         # Decisions
         for d in data.get("decisions", []) or []:

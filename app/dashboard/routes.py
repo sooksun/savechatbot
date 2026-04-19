@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -17,6 +18,7 @@ from ..models import (
     Group, Link, Message, MessageStandard, MessageTag, Standard, Summary, Tag, User,
 )
 from ..services.embeddings import search as semantic_search
+from ..services.enrichment import retry_failed as retry_failed_enrichment
 from ..services.minio_client import get_object_stream, stat_object
 from ..services.pdf_export import sar_book_to_pdf, summary_to_pdf
 from ..services.summarizer import generate_summary
@@ -32,6 +34,26 @@ settings = get_settings()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _BKK = ZoneInfo(settings.TIMEZONE)
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Strip MySQL boolean-mode FTS metachars so a single stray char doesn't error the query.
+_FTS_UNSAFE_RE = re.compile(r'[+\-><()~*"@]')
+
+
+def _sanitize_fts(q: str) -> str:
+    cleaned = _FTS_UNSAFE_RE.sub(" ", q).strip()
+    return cleaned[:200]
+
+
+def _safe_color(value: str, default: str = "#6366f1") -> str:
+    return value if _HEX_COLOR_RE.match(value or "") else default
+
+
+def _safe_media_path(path: str) -> str:
+    # Object keys are stored flat (e.g. "2026/04/foo.jpg"). Reject anything that looks
+    # like an attempted traversal or absolute path.
+    if not path or ".." in path.split("/") or path.startswith(("/", "\\")) or "\x00" in path:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    return path
 
 
 def _to_bkk(dt: datetime | None) -> str:
@@ -79,7 +101,13 @@ def login(
         )
     token = make_session_token(user.id)
     resp = RedirectResponse(next or "/", status_code=303)
-    resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=60 * 60 * 8)
+    resp.set_cookie(
+        "session", token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=60 * 60 * 8,
+    )
     return resp
 
 
@@ -88,6 +116,7 @@ def get_file(
     path: str,
     user: DashboardUser = Depends(get_current_user),
 ):
+    path = _safe_media_path(path)
     try:
         info = stat_object(path)
         resp = get_object_stream(path)
@@ -154,26 +183,29 @@ def messages(
     tag_id: int | None = None,
     msg_type: str | None = None,
     page: int = Query(1, ge=1),
+    page_size: int = Query(None, ge=1, le=200),
     db: Session = Depends(get_db),
     user: DashboardUser = Depends(get_current_user),
 ):
-    page_size = 50
+    page_size = page_size or settings.DASHBOARD_PAGE_SIZE
     query = (
         db.query(Message)
         .options(selectinload(Message.tags).selectinload(MessageTag.tag))
         .order_by(Message.sent_at.desc())
     )
     if q:
-        try:
-            query = query.filter(
-                sa_text("MATCH(messages.text, messages.ocr_text, messages.doc_text) "
-                        "AGAINST (:fts IN BOOLEAN MODE)")
-            ).params(fts=q)
-        except Exception:
-            like = f"%{q}%"
-            query = query.filter(or_(
-                Message.text.like(like), Message.ocr_text.like(like), Message.doc_text.like(like)
-            ))
+        fts_q = _sanitize_fts(q)
+        if fts_q:
+            try:
+                query = query.filter(
+                    sa_text("MATCH(messages.text, messages.ocr_text, messages.doc_text) "
+                            "AGAINST (:fts IN BOOLEAN MODE)")
+                ).params(fts=fts_q)
+            except Exception:
+                like = f"%{fts_q}%"
+                query = query.filter(or_(
+                    Message.text.like(like), Message.ocr_text.like(like), Message.doc_text.like(like)
+                ))
     if group_id:
         query = query.filter(Message.group_id == group_id)
     if category_id:
@@ -264,7 +296,7 @@ def tags_add(
 ):
     name = name.strip()
     if name and not db.query(Tag).filter_by(name=name).first():
-        db.add(Tag(name=name[:64], color=color[:16]))
+        db.add(Tag(name=name[:64], color=_safe_color(color)))
         db.commit()
     return RedirectResponse("/tags", status_code=303)
 
@@ -292,7 +324,7 @@ def message_tag_attach(
     if not db.query(MessageTag).filter_by(message_id=message_id, tag_id=tag_id).first():
         db.add(MessageTag(message_id=message_id, tag_id=tag_id))
         db.commit()
-    return RedirectResponse(request_referer_or_messages(), status_code=303)
+    return RedirectResponse("/messages", status_code=303)
 
 
 @router.post("/messages/{message_id}/untag")
@@ -306,11 +338,7 @@ def message_tag_detach(
     if mt:
         db.delete(mt)
         db.commit()
-    return RedirectResponse(request_referer_or_messages(), status_code=303)
-
-
-def request_referer_or_messages() -> str:
-    return "/messages"
+    return RedirectResponse("/messages", status_code=303)
 
 
 # ─── Knowledge: entities / decisions / actions / wiki ────────────────────────
@@ -502,13 +530,28 @@ def summaries(
     return templates.TemplateResponse("summaries.html", {"request": request, "user": user, "rows": rows})
 
 
+@router.post("/enrichment/retry")
+async def enrichment_retry(
+    limit: int = Form(50),
+    admin: DashboardUser = Depends(require_admin),
+):
+    limit = max(1, min(limit, 500))
+    processed = await retry_failed_enrichment(limit=limit)
+    return {"processed": processed}
+
+
 @router.post("/summaries/run")
 def summaries_run(
     period: str = Form("daily"),
     ref: str | None = Form(None),
-    user: DashboardUser = Depends(get_current_user),
+    admin: DashboardUser = Depends(require_admin),
 ):
-    d = date.fromisoformat(ref) if ref else None
+    if period not in ("daily", "weekly"):
+        raise HTTPException(status_code=400, detail="Invalid period")
+    try:
+        d = date.fromisoformat(ref) if ref else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
     generate_summary(period, d)
     return RedirectResponse("/summaries", status_code=303)
 
@@ -742,7 +785,7 @@ def standard_export_pdf(
 
 @router.get("/sar/export.pdf")
 def sar_export_pdf(
-    year: str = Query("", description="ปีการศึกษา เช่น 2568"),
+    year: str = Query("", description="ปีการศึกษา เช่น 2568", max_length=10, pattern=r"^[0-9]{0,4}$"),
     db: Session = Depends(get_db),
     admin: DashboardUser = Depends(require_admin),
 ):

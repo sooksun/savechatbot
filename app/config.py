@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,12 +17,14 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_TIMEOUT_SEC: int = 30
 
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
     APP_BASE_URL: str = "http://localhost:8000"
     MEDIA_ROOT: str = "./storage/media"
     TIMEZONE: str = "Asia/Bangkok"
+    ENVIRONMENT: str = "development"  # development | production
 
     DASHBOARD_USER: str = "admin"
     DASHBOARD_PASSWORD: str = "change_me"
@@ -41,6 +44,40 @@ class Settings(BaseSettings):
     DAILY_SUMMARY_AT: str = "22:00"
     WEEKLY_SUMMARY_DOW: int = 0
     WEEKLY_SUMMARY_AT: str = "09:00"
+
+    # Config-driven limits (Sprint 4)
+    MAX_DOC_TEXT_LEN: int = 200_000
+    MAX_TRANSCRIPT_LEN: int = 200_000
+    MAX_OCR_TEXT_LEN: int = 5_000
+    KNOWLEDGE_BODY_MAX: int = 8_000
+    RAG_K: int = 8
+    DASHBOARD_PAGE_SIZE: int = 50
+    MEDIA_DOWNLOAD_MAX_BYTES: int = 500_000_000  # 500 MB
+
+    # Rate limiting
+    RATE_LIMIT_WEBHOOK: str = "120/minute"
+    RATE_LIMIT_LOGIN: str = "10/minute"
+    RATE_LIMIT_DEFAULT: str = "300/minute"
+
+    @field_validator("DASHBOARD_SECRET_KEY")
+    @classmethod
+    def _secret_must_be_set(cls, v: str, info) -> str:
+        # In production, refuse to start with the default placeholder.
+        env = (info.data.get("ENVIRONMENT") or "development").lower()
+        if env == "production" and ("change-this-secret-key" in v or len(v) < 32):
+            raise ValueError(
+                "DASHBOARD_SECRET_KEY must be set to a strong random value "
+                "(>=32 chars) when ENVIRONMENT=production"
+            )
+        return v
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.is_production or self.APP_BASE_URL.lower().startswith("https://")
 
     @property
     def db_url(self) -> str:

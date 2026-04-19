@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 
+from ..config import get_settings
 from ..database import SessionLocal
 from ..models import Group, Message
 from .embeddings import search as semantic_search
 from .gemini_client import _generate
 
 log = logging.getLogger(__name__)
+settings = get_settings()
 
 
 def _resolve_group_id(line_group_id: str | None) -> int | None:
@@ -54,7 +56,8 @@ def _build_context(message_ids: list[int]) -> str:
         db.close()
 
 
-def answer(question: str, line_group_id: str | None, k: int = 8) -> str:
+def answer(question: str, line_group_id: str | None, k: int | None = None) -> str:
+    k = k or settings.RAG_K
     gid = _resolve_group_id(line_group_id)
     hits = semantic_search(question, group_id=gid, limit=k)
     ids = [h["message_id"] for h in hits if h.get("message_id")]

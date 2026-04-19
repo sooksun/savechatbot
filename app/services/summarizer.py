@@ -38,9 +38,17 @@ def _fetch_lines(db: Session, group_id: int | None, start: datetime, end: dateti
     if group_id is not None:
         q = q.filter(Message.group_id == group_id)
     q = q.order_by(Message.sent_at.asc())
+    rows = q.all()
+
+    # Prefetch all links for the messages in a single query (avoid N+1).
+    message_ids = [msg.id for msg, _ in rows]
+    links_by_msg: dict[int, list[Link]] = {}
+    if message_ids:
+        for ln in db.query(Link).filter(Link.message_id.in_(message_ids)).all():
+            links_by_msg.setdefault(ln.message_id, []).append(ln)
 
     lines: list[str] = []
-    for msg, user in q.all():
+    for msg, user in rows:
         who = (user.display_name if user else None) or "ไม่ทราบ"
         stamp = msg.sent_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(TZ).strftime("%H:%M")
         if msg.msg_type == "text" and msg.text:
@@ -53,9 +61,7 @@ def _fetch_lines(db: Session, group_id: int | None, start: datetime, end: dateti
         elif msg.msg_type in ("video", "audio", "file"):
             lines.append(f"[{stamp}] {who}: ({msg.msg_type})")
 
-        for ln in (
-            db.query(Link).filter(Link.message_id == msg.id).all()
-        ):
+        for ln in links_by_msg.get(msg.id, []):
             label = ln.title or ln.url
             lines.append(f"    ↳ [{ln.kind}] {label} — {ln.url}")
     return lines

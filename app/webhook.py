@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import get_settings
@@ -247,17 +248,23 @@ async def _handle_message(db: Session, event: dict, raw: WebhookRawEvent, backgr
         sent_at=_ts_to_dt(event.get("timestamp")),
     )
     db.add(m)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Concurrent webhook delivered the same event — unique constraint on
+        # line_message_id rejected us. Treat as duplicate and move on.
+        db.rollback()
+        return
 
-    for ln in extract_links(text):
+    extracted_links = list(extract_links(text))
+    for ln in extracted_links:
         db.add(Link(message_id=m.id, url=ln.url, kind=ln.kind))
     db.commit()
 
-    needs_enrich = (
+    needs_enrich = bool(
         m.msg_type in ("image", "file")
-        or bool(m.links)
-        or extract_links(text)
-        or bool(text)  # text messages still get embedded for semantic search
+        or extracted_links
+        or text
     )
     if needs_enrich:
         background.add_task(enrich_message, m.id)
@@ -286,11 +293,17 @@ async def webhook(
     background: BackgroundTasks,
     x_line_signature: str | None = Header(default=None),
 ):
-    body = await request.body()
+    try:
+        body = await request.body()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request body")
     if not _verify(body, x_line_signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
     events = payload.get("events", [])
     db: Session = SessionLocal()
     try:

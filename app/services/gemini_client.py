@@ -5,6 +5,7 @@ We avoid hard-failing if the API is unavailable — callers should tolerate None
 from __future__ import annotations
 
 import json
+import logging
 from typing import Iterable
 
 from google import genai
@@ -12,6 +13,7 @@ from google.genai import types
 
 from ..config import get_settings
 
+log = logging.getLogger(__name__)
 settings = get_settings()
 
 _client: genai.Client | None = None
@@ -22,7 +24,12 @@ def _get_client() -> genai.Client | None:
     if not settings.GEMINI_API_KEY:
         return None
     if _client is None:
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        try:
+            http_opts = types.HttpOptions(timeout=settings.GEMINI_TIMEOUT_SEC * 1000)
+            _client = genai.Client(api_key=settings.GEMINI_API_KEY, http_options=http_opts)
+        except TypeError:
+            # Older google-genai versions without HttpOptions timeout support
+            _client = genai.Client(api_key=settings.GEMINI_API_KEY)
     return _client
 
 
@@ -34,9 +41,13 @@ def _generate(prompt: str, *, response_mime_type: str | None = None) -> str | No
     if response_mime_type:
         cfg_kwargs["response_mime_type"] = response_mime_type
     config = types.GenerateContentConfig(**cfg_kwargs)
-    resp = client.models.generate_content(
-        model=settings.GEMINI_MODEL, contents=prompt, config=config
-    )
+    try:
+        resp = client.models.generate_content(
+            model=settings.GEMINI_MODEL, contents=prompt, config=config
+        )
+    except Exception as e:
+        log.warning("Gemini generate failed: %s", e.__class__.__name__)
+        return None
     return (resp.text or "").strip()
 
 
@@ -61,6 +72,7 @@ def classify_message(text: str, categories: list[str]) -> str | None:
         name = (data.get("category") or "").strip()
         return name or None
     except json.JSONDecodeError:
+        log.warning("classify_message: non-JSON response: %s", raw[:200])
         return None
 
 
