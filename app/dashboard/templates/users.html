@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>เพิ่มผู้ใช้ใหม่</h3>
+  <form method="post" action="/users/add" class="flex">
+    <input name="username" placeholder="ชื่อผู้ใช้" required style="width:160px"/>
+    <input type="password" name="password" placeholder="รหัสผ่าน" required style="width:160px"/>
+    <select name="role">
+      <option value="viewer">Viewer — ดูได้อย่างเดียว</option>
+      <option value="admin">Admin — จัดการได้ทั้งหมด</option>
+    </select>
+    <button type="submit">เพิ่มผู้ใช้</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>ชื่อผู้ใช้</th>
+        <th>บทบาท</th>
+        <th>สถานะ</th>
+        <th>สร้างเมื่อ</th>
+        <th>จัดการ</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in rows %}
+      <tr>
+        <td><strong>{{ u.username }}</strong> {% if u.id == user.id %}<span class="tag">คุณ</span>{% endif %}</td>
+        <td>
+          {% if u.role == 'admin' %}
+            <span class="tag" style="color:#fbbf24;border-color:#fbbf24">Admin</span>
+          {% else %}
+            <span class="tag">Viewer</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if u.is_active %}
+            <span style="color:#4ade80">● เปิดใช้งาน</span>
+          {% else %}
+            <span style="color:#f87171">● ปิดใช้งาน</span>
+          {% endif %}
+        </td>
+        <td class="muted">{{ u.created_at | to_bkk }}</td>
+        <td>
+          <div class="flex">
+            {% if u.id != user.id %}
+              <form class="inline" method="post" action="/users/toggle">
+                <input type="hidden" name="id" value="{{ u.id }}"/>
+                <button type="submit" class="secondary">
+                  {% if u.is_active %}ปิดใช้งาน{% else %}เปิดใช้งาน{% endif %}
+                </button>
+              </form>
+              <form class="inline" method="post" action="/users/delete"
+                    onsubmit="return confirm('ลบผู้ใช้ {{ u.username }}?')">
+                <input type="hidden" name="id" value="{{ u.id }}"/>
+                <button type="submit" class="secondary" style="color:#f87171">ลบ</button>
+              </form>
+            {% endif %}
+            <form class="inline" method="post" action="/users/reset-password"
+                  onsubmit="var p=prompt('รหัสผ่านใหม่สำหรับ {{ u.username }}:');if(!p)return false;this.querySelector('[name=new_password]').value=p;return true;">
+              <input type="hidden" name="id" value="{{ u.id }}"/>
+              <input type="hidden" name="new_password" value=""/>
+              <button type="submit" class="secondary">รีเซ็ตรหัสผ่าน</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card muted" style="font-size:13px">
+  <strong>สิทธิ์การใช้งาน:</strong><br/>
+  <strong>Admin</strong> — เข้าถึงได้ทุกหน้า เพิ่ม/ลบหมวดหมู่ สร้างสรุป จัดการผู้ใช้<br/>
+  <strong>Viewer</strong> — ดูข้อความ ลิงก์ สรุป และหมวดหมู่ได้ แต่ไม่สามารถแก้ไขหรือลบได้
+</div>
+{% endblock %}

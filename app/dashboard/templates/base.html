@@ -44,6 +44,14 @@
     <a href="/links">ลิงก์</a>
     <a href="/summaries">สรุป</a>
     <a href="/categories">หมวดหมู่</a>
+    {% if user and user.role == 'admin' %}<a href="/users">จัดการผู้ใช้</a>{% endif %}
+    <span style="flex:1"></span>
+    {% if user %}
+      <span class="muted" style="font-size:13px">{{ user.username }}
+        {% if user.role == 'admin' %}<span class="tag" style="color:#fbbf24;border-color:#fbbf24">Admin</span>{% else %}<span class="tag">Viewer</span>{% endif %}
+      </span>
+      <a href="/logout" style="color:#f87171">ออกจากระบบ</a>
+    {% endif %}
   </header>
   <main>{% block content %}{% endblock %}</main>
 </body>

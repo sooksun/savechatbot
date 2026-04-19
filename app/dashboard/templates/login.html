@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>เข้าสู่ระบบ — GetChatBot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Kanit",sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:36px 32px;width:100%;max-width:380px}
+    h2{margin:0 0 24px;text-align:center;color:#38bdf8}
+    label{display:block;font-size:13px;color:#94a3b8;margin-bottom:4px}
+    input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #334155;background:#0b1220;color:#e2e8f0;font:inherit;margin-bottom:16px}
+    input:focus{outline:none;border-color:#38bdf8}
+    button{width:100%;padding:11px;border-radius:8px;border:none;background:#38bdf8;color:#0b1220;font:inherit;font-weight:600;font-size:15px;cursor:pointer}
+    button:hover{background:#7dd3fc}
+    .error{background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>GetChatBot</h2>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}"/>
+      <label>ชื่อผู้ใช้</label>
+      <input type="text" name="username" autofocus autocomplete="username"/>
+      <label>รหัสผ่าน</label>
+      <input type="password" name="password" autocomplete="current-password"/>
+      <button type="submit">เข้าสู่ระบบ</button>
+    </form>
+  </div>
+</body>
+</html>

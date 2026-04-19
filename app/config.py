@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     DASHBOARD_USER: str = "admin"
     DASHBOARD_PASSWORD: str = "change_me"
+    DASHBOARD_SECRET_KEY: str = "change-this-secret-key-in-production"
 
     DAILY_SUMMARY_AT: str = "22:00"
     WEEKLY_SUMMARY_DOW: int = 0
